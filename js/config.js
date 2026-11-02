@@ -4,7 +4,7 @@
 // la URL de la implementación web del proyecto Apps Script "ARDE Campo API".
 // ============================================================
 window.ARDE_CONFIG = {
-  API_URL: 'PEGAR_AQUI_LA_URL_DE_LA_API/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzDMmT2hvNu4ukUggQvzwnzp_yZeiDnXa8-TwLqfUy4ztBCWFDFDpPcMSQhRi7tSiG_hg/exec',
   VERSION: '1.0.0',
 
   DISTRITOS: [
