@@ -135,6 +135,7 @@ function login_(req) {
   var exp = Date.now() + APP.TOKEN_DIAS * 86400000;
   PropertiesService.getScriptProperties().setProperty('T_' + token, JSON.stringify({ n: usuario.nombre, r: usuario.rol, e: exp }));
   marcarAcceso_(usuario.fila);
+  CacheService.getScriptCache().remove('usuarios_activos'); // un usuario recién agregado entra al instante
   return { ok: true, token: token, usuario: { nombre: usuario.nombre, rol: usuario.rol } };
 }
 
