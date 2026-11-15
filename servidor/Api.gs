@@ -10,7 +10,7 @@
 // ============================================================
 
 var APP = {
-  VERSION: '1.0.0',
+  VERSION: '1.2.0',
   SHEET_USUARIOS: 'USUARIOS_APP',
   SHEET_LOG: 'LOG_APP',
   TOKEN_DIAS: 60,
@@ -29,6 +29,7 @@ var APP = {
     ['Carlos Quispe - Lima', 'TECNICO'],
     ['Alex Mora - Lima', 'TECNICO'],
     ['Manuel Castillo - Piura', 'TECNICO'],
+    ['Paul Espichan', 'SUPERVISOR'],
   ],
 };
 
@@ -60,6 +61,8 @@ var MODULOS = {
   c_traslado:     { rol: 'COMERCIAL', fn: function(d){ return registrarSolicitudTraslado(d); },   ref: 'idEquipo' },
   c_demo_contrato:{ rol: 'COMERCIAL', fn: function(d){ return pasarDemoAContrato(d); },           ref: 'idEquipo' },
   c_demo_retiro:  { rol: 'COMERCIAL', fn: function(d){ return retirarDemo(d); },                  ref: 'idEquipo' },
+  // ── Supervisor ──
+  sup_visita:     { rol: 'SUPERVISOR', fn: function(d){ return registrarVisitaSupervision(d); }, ref: 'cliente' },
 };
 
 // ============================================================
@@ -211,6 +214,13 @@ function datos_(req, usuario) {
       cambio:      getCambiosProgramados(),
       traslado:    getTrasladosProgramados(),
     };
+    out.correos = correosClientes_();   // para autocompletar el correo del cargo
+  }
+  if (puedeUsar_(usuario.rol, 'SUPERVISOR')) {
+    var sup = clientesSupervision_();
+    out.clientes = sup.clientes;
+    if (sup.error) out.cobranzaError = sup.error;
+    out.correos = out.correos || correosClientes_();
   }
   return out;
 }
@@ -258,6 +268,7 @@ function registrar_(req, usuario) {
   var datos = req.datos || {};
   // El nombre de quien registra sale del PIN, no del formulario
   if (mod.rol === 'TECNICO') datos.tecnico = usuario.nombre;
+  else if (mod.rol === 'SUPERVISOR') datos.supervisor = usuario.nombre;
   else datos.nombreComercial = usuario.nombre;
 
   // Hora en que se hizo el trabajo (si se registró sin señal y se envía después)
@@ -282,6 +293,18 @@ function registrar_(req, usuario) {
     return res;
   }
   escribirLog_(id, usuario, req, mod, datos, res);
+  // Cargo de conformidad en PDF (técnicos). Nunca hace fallar el registro.
+  if (res.ok && (mod.rol === 'TECNICO' || mod.rol === 'SUPERVISOR') && datos.conformidad) {
+    try {
+      var cf = procesarConformidad_(id, req.modulo, datos, res, usuario);
+      if (cf && cf.numero) {
+        res.cargo = cf.numero;
+        res.mensaje = String(res.mensaje || 'Registrado') + (cf.envio === 'ENVIADO'
+          ? ' · Cargo ' + cf.numero + ' enviado a ' + datos.conformidad.correo
+          : ' · Cargo ' + cf.numero + ' guardado');
+      }
+    } catch (errCf) { Logger.log('Conformidad: ' + errCf); }
+  }
   cache.remove('proc_' + id);
   return res;
 }
@@ -529,6 +552,33 @@ function enviarResumenDiario() {
   h.push(Object.keys(pend).map(function(k){ return k + ': <b>' + pend[k] + '</b>'; }).join(' · '));
   h.push('</p><h3>Mantenimientos vencidos</h3><p><b>' + vencidos + '</b> equipo(s) activos con la fecha de próximo mantenimiento pasada.</p>');
 
+  // Cargos de conformidad del día: sin firma del cliente y envíos fallidos
+  var cf = ss.getSheetByName('CONFORMIDADES'), cargosHoy = 0, sinFirma = {}, fallidos = [];
+  if (cf && cf.getLastRow() >= 2) {
+    var desdeCf = Math.max(2, cf.getLastRow() - 1500);
+    cf.getRange(desdeCf, 1, cf.getLastRow() - desdeCf + 1, 13).getValues().forEach(function(r){
+      if (!esHoy(r[1])) return;
+      cargosHoy++;
+      if (/^NO/.test(String(r[7]))) sinFirma[r[6]] = (sinFirma[r[6]] || 0) + 1;
+      if (/^ERROR/.test(String(r[11]))) fallidos.push(r[0] + ' · ' + r[5] + ' · ' + r[11]);
+    });
+  }
+  h.push('<h3>Cargos de conformidad</h3><p><b>' + cargosHoy + '</b> cargo(s) emitidos hoy.</p>');
+  var tecSinFirma = Object.keys(sinFirma);
+  if (tecSinFirma.length) h.push('<p style="color:#B45309">⚠ Sin firma del cliente: ' + tecSinFirma.map(function(t){ return t + ' (' + sinFirma[t] + ')'; }).join(' · ') + '</p>');
+  if (fallidos.length) {
+    h.push('<p style="color:#B91C1C">Cargos con error (' + fallidos.length + '):</p>');
+    fallidos.forEach(function(x){ h.push('<p style="font-size:13px">' + x + '</p>'); });
+  }
+
+  var sup = resumenSupervision_(esHoy);
+  h.push('<h3>Supervisión de clientes</h3><p><b>' + sup.visitas.length + '</b> visita(s) hoy.</p>');
+  sup.visitas.forEach(function(x){ h.push('<p style="font-size:13px">' + x + '</p>'); });
+  if (sup.compromisos.length) {
+    h.push('<p style="color:#B45309"><b>Compromisos de pago por vencer:</b></p>');
+    sup.compromisos.forEach(function(x){ h.push('<p style="font-size:13px">' + x + '</p>'); });
+  }
+
   if (rechazos.length) {
     h.push('<h3 style="color:#B91C1C">Registros rechazados hoy (' + rechazos.length + ')</h3>');
     rechazos.forEach(function(r){ h.push('<p style="font-size:13px">' + r + '</p>'); });
@@ -553,6 +603,7 @@ function nombreModulo_(m) {
     retiro: 'Retiro', cambio: 'Cambio', traslado: 'Traslado', c_incidencia: 'Incidencia (com.)',
     c_instalacion: 'Solicitud instalación', c_retiro: 'Solicitud retiro', c_cambio: 'Solicitud cambio',
     c_traslado: 'Solicitud traslado', c_demo_contrato: 'Demo → contrato', c_demo_retiro: 'Demo retirada',
+    sup_visita: 'Visita de supervisión',
   }[m] || m;
 }
 
@@ -594,7 +645,7 @@ function configurarApp() {
     });
     sh.getRange(2, 3, 200, 1).setNumberFormat('@'); // PIN como texto
     sh.getRange(2, 1, filas.length, 5).setValues(filas);
-    var reglaRol = SpreadsheetApp.newDataValidation().requireValueInList(['TECNICO', 'COMERCIAL', 'ADMIN'], true).build();
+    var reglaRol = SpreadsheetApp.newDataValidation().requireValueInList(['TECNICO', 'COMERCIAL', 'SUPERVISOR', 'ADMIN'], true).build();
     var reglaAct = SpreadsheetApp.newDataValidation().requireValueInList(['SÍ', 'NO'], true).build();
     sh.getRange(2, 2, 200, 1).setDataValidation(reglaRol);
     sh.getRange(2, 4, 200, 1).setDataValidation(reglaAct);

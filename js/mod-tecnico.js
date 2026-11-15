@@ -511,4 +511,173 @@
       };
     },
   };
+
+  // ============================================================
+  // CARGO DE CONFORMIDAD (todos los módulos del técnico)
+  // Firma del técnico + firma del cliente + correo → el servidor arma
+  // el PDF, lo guarda en Drive (módulo / mes) y se lo envía al cliente.
+  // ============================================================
+  var MOTIVOS_SIN_FIRMA = ['Local cerrado / sin personal', 'Encargado no disponible', 'Cliente se negó a firmar', 'Otro'];
+  var RE_CORREO = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
+
+  function correos(txt) { return String(txt || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  function correoGuardado(vista, cliente) {
+    var k = ui.normal(cliente).trim();
+    if (!k) return '';
+    return (vista.correos || {})[k] || (A.store.get('correosClientes') || {})[k] || '';
+  }
+  function claveFirmaTec() { var u = A.sesion.usuario() || {}; return 'firmaTec_' + (u.nombre || ''); }
+
+  // Qué va en el PDF de cada módulo: cliente, dirección y el detalle del trabajo
+  var CONF = {
+    mantenimiento: function (c) {
+      var e = c.estado, x = A.equipo(c.vista, e.equipo) || {}, ll = n(e.llegada), rc = n(e.recarga);
+      return { cliente: x.cliente, direccion: [x.direccion, x.distrito].filter(Boolean).join(' · '), idEquipo: x.id, referencia: x.id,
+        filas: [['Equipo', x.id + ' · ' + (x.modelo || '')], ['Espacio', x.espacio], ['Fragancia', e.cambio === 'Sí' ? e.nuevaFrag + ' (antes: ' + x.fragancia + ')' : x.fragancia],
+          ['Nivel al llegar', ll + ' ml'], ['Recarga aplicada', rc + ' ml'], ['Nivel al salir', (ll + rc) + ' ml'], ['Observaciones', e.obs]] };
+    },
+    instalacion: function (c) {
+      var e = c.estado, x = e.sol !== 'otro' ? programado(c.vista, 'instalacion', e.sol) : null;
+      var id = 'EQP-' + String(parseInt(e.num, 10)).padStart(3, '0');
+      var modelo = e.modelo === 'otro' ? e.modeloOtro : e.modelo;
+      return { cliente: x ? x.cliente : e.clienteOtro, direccion: [e.direccion, e.distrito].filter(Boolean).join(' · '), idEquipo: id, referencia: x ? x.ticket : id,
+        filas: [['Ticket', x ? x.ticket : '—'], ['Equipo instalado', id + ' · ' + modelo], ['Espacio', e.espacio], ['Tipo de servicio', x ? A.tipoServicio(x.tipoServicio) : ''],
+          ['Fragancia', e.frag], ['Fragancia aplicada', n(e.ml) + ' ml'], ['Observaciones', e.obs]] };
+    },
+    incidencia: function (c) {
+      var e = c.estado, x = programado(c.vista, 'incidencia', e.inc) || {};
+      return { cliente: x.cliente, direccion: [x.direccion, x.distrito].filter(Boolean).join(' · '), idEquipo: x.idEquipo, referencia: x.ticket,
+        filas: [['Ticket', x.ticket], ['Equipo', x.idEquipo + ' · ' + (x.modelo || '')], ['Incidencia reportada', x.tipoIncidencia + (x.otroTipo ? ' · ' + x.otroTipo : '')],
+          ['Problema encontrado', e.desc], ['Acción tomada', e.accion], ['Estado al cerrar', e.cierre],
+          ['Fragancia aplicada', e.aplico === 'Sí' ? n(e.ml) + ' ml' : 'No'], ['Incluyó mantenimiento', e.mant], ['Observaciones', e.obs]] };
+    },
+    salida: function (c) {
+      var e = c.estado, conFrag = e.tipo !== 'Equipo', conEq = e.tipo !== 'Fragancia', x = conEq ? (A.equipo(c.vista, e.equipo) || {}) : {};
+      return { cliente: x.cliente || '', direccion: 'Almacén ARDE', idEquipo: x.id || '', referencia: conEq ? x.id : e.frag,
+        filas: [['Tipo de salida', e.tipo], ['Para', e.destino], conFrag ? ['Fragancia', e.frag + ' · ' + n(e.vol) + ' ml'] : null,
+          conEq ? ['Equipo', x.id + ' · ' + (x.modelo || '') + ' · ' + (x.cliente || '')] : null, ['Observaciones', e.obs]].filter(Boolean) };
+    },
+    retiro: function (c) {
+      var r = programado(c.vista, 'retiro', c.estado.ret) || {};
+      return { cliente: r.cliente, direccion: [r.direccion, r.distrito].filter(Boolean).join(' · '), idEquipo: r.idEquipo, referencia: r.ticket,
+        filas: [['Ticket', r.ticket], ['Equipo retirado', r.idEquipo + ' · ' + (r.modelo || '')], ['Motivo', r.motivo], ['Observaciones', c.estado.obs]] };
+    },
+    cambio: function (c) {
+      var r = programado(c.vista, 'cambio', c.estado.cam) || {};
+      return { cliente: r.cliente, direccion: [r.direccion, r.distrito].filter(Boolean).join(' · '), idEquipo: r.idEquipo, referencia: r.ticket,
+        filas: [['Ticket', r.ticket], ['Equipo', r.idEquipo], ['Modelo retirado', r.modeloActual], ['Modelo instalado', r.modeloNuevo], ['Motivo', r.motivo], ['Observaciones', c.estado.obs]] };
+    },
+    traslado: function (c) {
+      var r = programado(c.vista, 'traslado', c.estado.tra) || {};
+      return { cliente: r.cliente, direccion: [r.direccionNueva, r.distritoNuevo].filter(Boolean).join(' · '), idEquipo: r.idEquipo, referencia: r.ticket,
+        filas: [['Ticket', r.ticket], ['Equipo', r.idEquipo + ' · ' + (r.modelo || '')], ['Desde', [r.direccionActual, r.distritoActual].filter(Boolean).join(' · ')],
+          ['Hacia', [r.direccionNueva, r.distritoNuevo].filter(Boolean).join(' · ')], ['Ubicación', r.ubicacion], ['Observaciones', c.estado.obs]] };
+    },
+  };
+
+  function conConformidad(m, opt) {
+    opt = opt || {};
+    var almacen = m.id === 'salida';
+    var infoDe = opt.info || CONF[m.id];
+    var rolFirma = opt.rolFirma || 'técnico';
+    var vistaOrig = m.vista, revisarOrig = m.revisar, armarOrig = m.armar;
+
+    m.vista = function (c) {
+      var f = c.f, e = c.estado, v = c.vista, u = A.sesion.usuario() || {};
+      var nodos = vistaOrig(c);
+      var paso = String(nodos.filter(function (x) { return x && x.querySelector && x.querySelector('.step'); }).length + 1);
+      var cliente = function () { try { return infoDe(c).cliente || ''; } catch (err) { return ''; } };
+      var presente = function () { return almacen || e.cfPres === 'Sí'; };
+      var conCorreo = function () { return !almacen && e.cfSinCorreo !== 'Sí'; };
+      // Firma del técnico guardada en este celular
+      if (!e.cfFirmaTec) { var g = A.store.get(claveFirmaTec()); if (g) e.cfFirmaTec = g; }
+      // Autocompleta el correo conocido del cliente al elegirlo
+      f.vigias.push(function () {
+        if (almacen) return;
+        var cli = cliente();
+        if (cli === e._cfCli) return;
+        e._cfCli = cli;
+        var g = correoGuardado(v, cli);
+        if (!e.cfCorreo || e.cfCorreo === e._cfAuto) { e.cfCorreo = g; e._cfAuto = g; }
+      });
+
+      var tarjetaCliente = almacen
+        ? f.card('Conformidad de salida', paso, [
+            f.text('cfNombre', 'Quién entrega en almacén', { req: true, ph: 'Nombre y apellido' }),
+            f.firma('cfFirma', 'Firma de quien entrega', { req: true }),
+          ])
+        : f.card(opt.tituloCard || 'Conformidad del cliente', paso, [
+            f.seg('cfPres', '¿El cliente firma?', [{ v: 'Sí', t: 'Sí, firma', s: opt.subFirma || 'Da su conformidad' }, { v: 'No', t: 'No disponible', s: 'No hay quién firme' }], { req: true }),
+            f.si(function () { return e.cfPres === 'Sí'; }, [
+              f.text('cfNombre', 'Nombre de quien recibe', { req: function () { return e.cfPres === 'Sí'; }, ph: 'Nombre y apellido' }),
+              f.text('cfCargo', 'DNI o cargo (opcional)', { ph: 'Ej. Administrador · 45871236' }),
+              f.firma('cfFirma', 'Firma del cliente', { req: function () { return e.cfPres === 'Sí'; }, ph: 'El cliente firma aquí con el dedo' }),
+            ]),
+            f.si(function () { return e.cfPres === 'No'; }, [
+              f.select('cfMotivo', 'Motivo', MOTIVOS_SIN_FIRMA, { req: function () { return e.cfPres === 'No'; } }),
+              f.si(function () { return e.cfMotivo === 'Otro'; }, [f.text('cfMotivoOtro', 'Especifica', { req: function () { return e.cfPres === 'No' && e.cfMotivo === 'Otro'; } })]),
+              f.text('cfNombreNo', 'Quién atendió (si hubo alguien)', { ph: 'Opcional' }),
+            ]),
+            h('div', { style: { height: '6px' } }),
+            f.si(conCorreo, [
+              f.text('cfCorreo', 'Correo del cliente', { req: conCorreo, type: 'email', inputmode: 'email', ph: 'nombre@empresa.com',
+                hint: 'Le llega el cargo en PDF apenas envíes. Varios correos: sepáralos con coma.' }),
+            ]),
+            f.seg('cfSinCorreo', null, [{ v: 'Sí', t: 'El cliente no tiene correo' }], { toggle: true, cls: 'wrap' }),
+          ]);
+
+      var tarjetaTec = f.card('Firma del ' + rolFirma, String(+paso + 1), [
+        h('div', { class: 'sig-quien', text: u.nombre || '' }),
+        f.firma('cfFirmaTec', null, { req: true, ph: 'Tu firma (queda guardada en este celular)',
+          alFirmar: function (url) { A.store.set(claveFirmaTec(), url); } }),
+      ]);
+      return nodos.concat([tarjetaCliente, tarjetaTec]);
+    };
+
+    m.revisar = function (c) {
+      var e = c.estado;
+      if (!almacen && e.cfSinCorreo !== 'Sí') {
+        var l = correos(e.cfCorreo);
+        if (!l.length) return c.f.error('cfCorreo', 'Ingresa el correo del cliente');
+        var malo = l.filter(function (x) { return !RE_CORREO.test(x); })[0];
+        if (malo) return c.f.error('cfCorreo', 'Revisa este correo: ' + malo);
+      }
+      var r = revisarOrig ? revisarOrig(c) : null;
+      if (typeof r === 'string') return r;
+      r = r || {};
+      if (!almacen && e.cfPres === 'No') {
+        r.avisos = (r.avisos || []).concat(['El cargo saldrá <b>sin firma del cliente</b> (' + ui.esc(e.cfMotivo === 'Otro' ? e.cfMotivoOtro : e.cfMotivo) + '). Queda registrado en el reporte.']);
+      }
+      return r;
+    };
+
+    m.armar = function (c) {
+      var e = c.estado, item = armarOrig(c), info = infoDe(c);
+      var b64 = function (url) { return url ? String(url).split(',')[1] : ''; };
+      var firma = almacen || e.cfPres === 'Sí';
+      if (!almacen && e.cfSinCorreo !== 'Sí' && info.cliente) {   // recordar el correo en este celular
+        var mapa = A.store.get('correosClientes') || {};
+        mapa[ui.normal(info.cliente).trim()] = correos(e.cfCorreo).join(', ');
+        A.store.set('correosClientes', mapa);
+      }
+      item.datos.conformidad = {
+        tipo: almacen ? 'almacen' : (opt.tipo || 'cliente'),
+        cliente: info.cliente || '', direccion: info.direccion || '', idEquipo: info.idEquipo || '', referencia: info.referencia || '',
+        filas: (info.filas || []).filter(function (r) { return r && r[1] != null && String(r[1]).trim() !== '' && String(r[1]) !== 'undefined'; })
+          .map(function (r) { return [String(r[0]), String(r[1])]; }),
+        firmo: firma ? 'Sí' : 'No',
+        nombre: firma ? (e.cfNombre || '') : (e.cfNombreNo || ''),
+        cargo: firma ? (e.cfCargo || '') : '',
+        motivo: firma ? '' : (e.cfMotivo === 'Otro' ? 'Otro: ' + (e.cfMotivoOtro || '') : e.cfMotivo),
+        correo: almacen || e.cfSinCorreo === 'Sí' ? '' : correos(e.cfCorreo).join(', '),
+        firmaCliente: firma ? b64(e.cfFirma) : '',
+        firmaTecnico: b64(e.cfFirmaTec),
+      };
+      return item;
+    };
+    return m;
+  }
+
+  A.conConformidad = conConformidad;
+  ['mantenimiento', 'instalacion', 'incidencia', 'salida', 'retiro', 'cambio', 'traslado'].forEach(function (id) { conConformidad(A.modulos[id]); });
 })();

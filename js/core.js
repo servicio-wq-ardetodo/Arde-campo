@@ -142,6 +142,8 @@
       programados: {},
       hoy: d.hoy,
       descargadoEn: desde,
+      correos: d.correos || {},
+      clientes: d.clientes || [],
     };
     var usados = {};
     recientes.forEach(function (it) {
@@ -244,7 +246,7 @@
     Object.keys(datos || {}).forEach(function (k) {
       var v = datos[k];
       if (typeof v === 'string' && v.length > 2000) return;
-      if (k === 'sedes' || k === 'luzVerde') return;
+      if (k === 'sedes' || k === 'luzVerde' || k === 'conformidad') return;
       d[k] = v;
     });
     return d;

@@ -115,7 +115,7 @@
         if (items.length > 12) lista.appendChild(h('div', { class: 'sheet-count', text: filtrados.length + ' de ' + items.length }));
         if (!filtrados.length) { lista.appendChild(h('div', { class: 'empty' }, h('div', { class: 'e-ico', text: '🔍' }), o.vacio || 'Sin resultados')); return; }
         var grupo = null;
-        filtrados.slice(0, 250).forEach(function (it) {
+        filtrados.slice(0, 400).forEach(function (it) {
           if (it.group && it.group !== grupo) { grupo = it.group; lista.appendChild(h('div', { class: 'opt-group', text: grupo })); }
           lista.appendChild(h('button', { class: 'opt-item' + (String(it.v) === String(o.valor) ? ' sel' : ''), role: 'option', onclick: function () { cerrar(it); } },
             h('div', { class: 'oi' }, h('b', { text: it.t }), it.s ? h('small', { text: it.s }) : null),
@@ -271,6 +271,31 @@
       return marco(k, etiqueta, o.req, cont, o.hint);
     };
 
+    // Varias opciones a la vez (chips). Guarda un arreglo en estado[k]
+    f.multi = function (k, etiqueta, opciones, o) {
+      o = o || {};
+      var cont = h('div', { class: 'seg multi ' + (o.cls || 'wrap'), role: 'group', id: 'f-' + k });
+      var botones = opciones.map(function (op) {
+        var v = typeof op === 'string' ? op : op.v, t = typeof op === 'string' ? op : (op.t || op.v);
+        var b = h('button', { type: 'button', 'data-v': v, 'aria-pressed': 'false',
+          onclick: function () {
+            var l = (estado[k] || []).slice(), i = l.indexOf(v);
+            if (i === -1) { if (o.unico && o.unico.indexOf(v) !== -1) l = []; else if (o.unico) l = l.filter(function (x) { return o.unico.indexOf(x) === -1; }); l.push(v); }
+            else l.splice(i, 1);
+            estado[k] = l; quitarError(k); cambio();
+          } }, op.ico ? h('span', { class: 't-ico', text: op.ico }) : null, h('span', null, t, op.s ? h('small', { text: op.s }) : null));
+        cont.appendChild(b);
+        return b;
+      });
+      var pintar = function () {
+        var l = estado[k] || [];
+        botones.forEach(function (b) { var on = l.indexOf(b.getAttribute('data-v')) !== -1; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+      };
+      pintar();
+      f.vigias.push(pintar);
+      return marco(k, etiqueta, o.req, cont, o.hint);
+    };
+
     // Foto con compresión. Guarda {dataUrl, mime, nombre, kb} en estado[k]
     f.foto = function (k, etiqueta, o) {
       o = o || {};
@@ -302,6 +327,70 @@
       pintar();
       f.vigias.push(pintar);
       return marco(k, etiqueta, o.req, caja, o.hint);
+    };
+
+    // Firma con el dedo. Guarda un PNG (dataURL) en estado[k]; '' si está en blanco.
+    // o.guardada(): firma previa para ofrecer (ej. la del técnico); o.alFirmar(dataUrl)
+    f.firma = function (k, etiqueta, o) {
+      o = o || {};
+      var W = 640, H = 240;
+      var cv = h('canvas', { width: W, height: H, class: 'sig-cv', 'aria-label': etiqueta });
+      var ctx = cv.getContext('2d');
+      var puntos = 0, trazando = false, ultimo = null;
+      var aviso = h('div', { class: 'sig-ph', text: o.ph || 'Firma aquí con el dedo' });
+      var borrar = h('button', { type: 'button', class: 'link sig-clear', text: 'Borrar y firmar de nuevo' });
+      var caja = h('div', { class: 'sig' }, cv, aviso, h('div', { class: 'sig-line' }));
+      function estilo() { ctx.lineWidth = 4.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827'; }
+      function limpiar() { ctx.clearRect(0, 0, W, H); estilo(); }
+      function pintar() {
+        var v = estado[k];
+        caja.classList.toggle('set', !!v);
+        aviso.hidden = !!v;
+        borrar.hidden = !v;
+        if (v && cv.dataset.src !== v) {
+          var img = new Image();
+          img.onload = function () { limpiar(); ctx.drawImage(img, 0, 0, W, H); };
+          img.src = v; cv.dataset.src = v;
+        } else if (!v && cv.dataset.src) { limpiar(); cv.dataset.src = ''; }
+      }
+      function pos(ev) {
+        var r = cv.getBoundingClientRect();
+        return { x: (ev.clientX - r.left) * W / r.width, y: (ev.clientY - r.top) * H / r.height };
+      }
+      cv.addEventListener('pointerdown', function (ev) {
+        ev.preventDefault();
+        if (!estado[k]) { limpiar(); puntos = 0; }
+        trazando = true; ultimo = pos(ev);
+        try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+        aviso.hidden = true;
+        ctx.beginPath(); ctx.arc(ultimo.x, ultimo.y, 2, 0, Math.PI * 2); ctx.fillStyle = '#111827'; ctx.fill();
+      });
+      cv.addEventListener('pointermove', function (ev) {
+        if (!trazando) return;
+        ev.preventDefault();
+        var p = pos(ev);
+        ctx.beginPath(); ctx.moveTo(ultimo.x, ultimo.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+        puntos += Math.hypot(p.x - ultimo.x, p.y - ultimo.y);
+        ultimo = p;
+      });
+      function fin() {
+        if (!trazando) return;
+        trazando = false;
+        if (puntos < 60 && !estado[k]) { aviso.hidden = false; aviso.textContent = 'Firma un poco más grande'; return; }
+        var url = cv.toDataURL('image/png');
+        estado[k] = url; cv.dataset.src = url;
+        quitarError(k);
+        if (o.alFirmar) o.alFirmar(url);
+        pintar(); cambio();
+      }
+      cv.addEventListener('pointerup', fin);
+      cv.addEventListener('pointercancel', fin);
+      cv.addEventListener('pointerleave', fin);
+      borrar.addEventListener('click', function () { estado[k] = ''; puntos = 0; aviso.textContent = o.ph || 'Firma aquí con el dedo'; limpiar(); pintar(); cambio(); });
+      estilo();
+      pintar();
+      f.vigias.push(pintar);
+      return marco(k, etiqueta, o.req, h('div', null, caja, borrar), o.hint);
     };
 
     // Datos de solo lectura. fn() → [[etiqueta, valor, clase, ancho]]
@@ -344,7 +433,7 @@
       f.campos.forEach(function (c) { if (c.clave === k) { c.caja.classList.remove('bad'); var e = c.caja.querySelector('.errtxt'); if (e) e.remove(); } });
     }
     function visible(el) { while (el) { if (el.hidden) return false; el = el.parentElement; } return true; }
-    function vacio(v) { return v == null || v === '' || (typeof v === 'string' && !v.trim()); }
+    function vacio(v) { return v == null || v === '' || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length); }
 
     // Revisa los obligatorios visibles; marca y lleva al primero que falta
     f.validar = function () {

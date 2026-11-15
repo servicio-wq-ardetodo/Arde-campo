@@ -6,7 +6,8 @@ Cada persona entra con su PIN y ve solo sus módulos (Josef ve todo).
 ```
 arde-campo/
 ├── servidor/   → Apps Script (la "API" que escribe en el Sheet)
-│   ├── Api.gs  ├── Tecnico.gs  ├── Comercial.gs  └── appsscript.json
+│   ├── Api.gs  ├── Tecnico.gs  ├── Comercial.gs
+│   ├── Conformidad.gs (cargos PDF)  ├── Supervision.gs (Paul)  └── appsscript.json
 └── app/        → la app que se instala en el celular (se publica en GitHub Pages)
 ```
 
@@ -19,7 +20,7 @@ Los formularios actuales **siguen funcionando en paralelo**. No hace falta apaga
 1. Abre el Sheet **SISTEMA_AROMATIZACION_ACTUALIZADO** → *Extensiones → Apps Script*.
    (Que sea un proyecto **nuevo** ligado al Sheet: no lo mezcles con los proyectos de los formularios viejos.)
    Ponle de nombre **ARDE Campo API**.
-2. Crea 3 archivos de script y pega el contenido de `Api.gs`, `Tecnico.gs` y `Comercial.gs`.
+2. Crea 5 archivos de script y pega el contenido de `Api.gs`, `Tecnico.gs`, `Comercial.gs`, `Conformidad.gs` y `Supervision.gs`.
 3. *Configuración del proyecto* → marca **"Mostrar el archivo de manifiesto appsscript.json"** → reemplaza su contenido por el de `appsscript.json`.
 4. Selecciona la función **`configurarApp`** → **Ejecutar** → acepta los permisos.
    Esto:
@@ -79,6 +80,26 @@ Tras 6 PIN incorrectos, ese celular queda bloqueado 10 minutos.
 - **Alertas antes de enviar:** visita duplicada el mismo día y lecturas mayores a la capacidad del tanque.
 - **Validación con un clic:** el correo de cada instalación trae un botón "Validar"; al confirmarlo se marca VALIDADO_OPS = SÍ y el técnico ya la ve como programada.
 - **Historial:** cada persona ve lo que envió en los últimos 7 días y su estado.
+
+## Versión 1.2 — Cargos de conformidad y supervisión (nov-2026)
+
+**Para activarla (una sola vez):**
+1. En el proyecto de Apps Script: **reemplaza** `Código.gs` con el nuevo `Api.gs` y **crea** dos archivos nuevos: `Conformidad` y `Supervision`, con el contenido de la carpeta `servidor/`.
+2. Ejecuta **`actualizarApp`** (▶). Agrega el rol SUPERVISOR, crea a **Paul Espichan** con su PIN en USUARIOS_APP y crea las hojas nuevas. En el registro de ejecución verás su PIN y cuántos morosos leyó de Cobranza.
+3. *Implementar → Gestionar implementaciones → ✏️ → Versión: Nueva → Implementar* (la URL no cambia).
+
+**Cargos de conformidad (todos los módulos del técnico):**
+- El técnico firma (su firma queda guardada en el celular) y el cliente firma con el dedo. Si no hay quién firme: "No disponible" + motivo, y queda marcado.
+- Al enviar se arma un **PDF** (N° CF-00001…), se guarda en Drive en `ARDE · Cargos de conformidad / <módulo> / <yyyy-MM Mes>` y se envía al **correo del cliente**.
+- El correo se recuerda por cliente (hoja **CORREOS_CLIENTES**): la próxima visita aparece solo.
+- Todo queda listado en la hoja **CONFORMIDADES** (con link al PDF y estado del envío). Salida de almacén genera un cargo interno firmado por quien entrega.
+- Para crear la estructura dentro de otra carpeta (ej. "Proyecto Josef"), pon su ID en `CONF.CARPETA_PADRE_ID` (Conformidad.gs). Para recibir copia oculta de cada cargo, usa `CONF.COPIA_OCULTA`.
+
+**Supervisor (Paul):**
+- **Prioridades**: morosos (hoja CXC de COBRANZA ESPACIOS QUE ARDEN: PAGÓ = NO y ya vencido) y clientes problema (3+ incidencias en 60 días o una abierta hace más de 7 días). Toca un cliente para registrar la visita.
+- **Visita a cliente**: motivos Cliente Feliz / Incidencias / Cobranza / Otro. Cliente Feliz se graba en el **mismo Sheet de Cliente Feliz** (mismas columnas, el dashboard sigue igual). Compromisos de pago van a **VISITAS_SUPERVISION** y aparecen en el resumen de las 7 p.m. un día antes de vencer. Genera **Acta de visita** en PDF con firmas.
+- La cuenta que implementa la API debe tener acceso al Sheet de Cobranza y al de Cliente Feliz.
+- Cuota de correos de Google Workspace: 1 500 por día (sobra).
 
 ## Cuando hagas cambios
 

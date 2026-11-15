@@ -12,6 +12,7 @@
   var GRUPOS = [
     { titulo: 'Trabajo de campo', rol: 'TECNICO', mods: ['mantenimiento', 'incidencia', 'instalacion', 'retiro', 'cambio', 'traslado', 'salida'] },
     { titulo: 'Solicitudes comerciales', rol: 'COMERCIAL', mods: ['c_incidencia', 'c_instalacion', 'c_demo', 'c_retiro', 'c_cambio', 'c_traslado'] },
+    { titulo: 'Supervisión de clientes', rol: 'SUPERVISOR', mods: ['sup_visita', 'sup_prioridades'] },
   ];
 
   // ============================================================
@@ -254,15 +255,15 @@
   // ============================================================
   // MÓDULO (formulario)
   // ============================================================
-  function abrirModulo(id) {
+  function abrirModulo(id, inicial) {
     var m = A.modulos[id];
     var u = A.sesion.usuario() || {};
     var clave = (u.nombre || '') + '|' + id;
-    history.pushState({ p: 'modulo', id: id }, '');
+    if (inicial && pantalla === 'modulo') history.replaceState({ p: 'modulo', id: id }, ''); else history.pushState({ p: 'modulo', id: id }, '');
     pantalla = 'modulo';
     A.borrador.leer(clave).then(function (b) {
-      var recuperado = b && b.estado && Object.keys(b.estado).length > 1 && (Date.now() - b.guardado) < 3 * 86400000;
-      pintarModulo(m, clave, recuperado ? b.estado : null, recuperado ? b.guardado : null);
+      var recuperado = !inicial && !m.soloLectura && b && b.estado && Object.keys(b.estado).length > 1 && (Date.now() - b.guardado) < 3 * 86400000;
+      pintarModulo(m, clave, recuperado ? b.estado : (inicial ? Object.assign({}, inicial) : null), recuperado ? b.guardado : null);
     });
   }
 
@@ -274,7 +275,7 @@
       clearTimeout(t);
       t = setTimeout(function () { A.borrador.guardar(clave, estado); }, 500);
     });
-    var ctx = { estado: estado, f: f, vista: vista(), cola: cola, usuario: A.sesion.usuario() };
+    var ctx = { estado: estado, f: f, vista: vista(), cola: cola, usuario: A.sesion.usuario(), abrir: abrirModulo };
     var nodos = m.vista(ctx);
     f.refrescar();
 
@@ -284,14 +285,14 @@
     montar([
       h('div', { class: 'shell' },
         topbar(m.titulo, m.sub, function () { history.back(); }),
-        h('main', { class: 'main with-submit' },
+        h('main', { class: 'main' + (m.soloLectura ? '' : ' with-submit') },
           guardado ? h('div', { class: 'banner info' }, h('span', { class: 'bi', text: '📝' }),
             h('div', { class: 'grow' }, h('b', { text: 'Recuperamos tu borrador' }), 'Guardado a las ' + A.hora(guardado) + '.',
               h('div', null, h('button', { class: 'link', text: 'Empezar de nuevo', onclick: function () {
                 A.borrador.borrar(clave).then(function () { pintarModulo(m, clave, null, null); });
               } })))) : null,
           nodos)),
-      h('div', { class: 'submitbar' }, h('div', { class: 'in' }, btn)),
+      m.soloLectura ? null : h('div', { class: 'submitbar' }, h('div', { class: 'in' }, btn)),
     ]);
     pantalla = 'modulo';
   }
@@ -453,7 +454,7 @@
     var u = A.sesion.usuario() || {};
     var v = vista() || {};
     var fila = function (a, b) { return h('div', { class: 'acct-row' }, h('span', { text: a }), h('b', { text: b })); };
-    var rol = { TECNICO: 'Técnico', COMERCIAL: 'Asesor comercial', ADMIN: 'Operaciones (todo)' }[u.rol] || u.rol;
+    var rol = { TECNICO: 'Técnico', COMERCIAL: 'Asesor comercial', ADMIN: 'Operaciones (todo)', SUPERVISOR: 'Supervisor de clientes' }[u.rol] || u.rol;
     montar([
       h('div', { class: 'shell' },
         topbar('Cuenta', null, function () { history.back(); }),
@@ -498,8 +499,9 @@
           });
         });
       }).catch(function (e) { console.warn('SW', e); });
-      var recargado = false;
-      navigator.serviceWorker.addEventListener('controllerchange', function () { if (!recargado) { recargado = true; location.reload(); } });
+      // Solo recargar cuando es una ACTUALIZACIÓN (no en la primera instalación: cortaría el PIN que se está escribiendo)
+      var habia = !!navigator.serviceWorker.controller, recargado = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () { if (habia && !recargado) { recargado = true; location.reload(); } });
     });
   }
 
