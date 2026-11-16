@@ -212,7 +212,7 @@
 
   // Acta con firma del cliente y del supervisor → PDF en Drive y al correo del cliente
   A.conConformidad(A.modulos.sup_visita, {
-    tipo: 'visita', rolFirma: 'supervisor', tituloCard: 'Conformidad de la visita', subFirma: 'Firma el acta',
+    tipo: 'visita', rolFirma: 'supervisor', tituloCard: 'Conformidad de la visita', subFirma: 'Firma el acta', tituloObs: 'Observaciones del acta',
     info: function (c) {
       var e = c.estado, x = clienteDe(c.vista, e.cliente) || {}, otro = e.cliente === '_otro';
       var filas = [['Motivo', (e.motivos || []).map(function (m) { return m === 'Otro' ? 'Otro: ' + (e.motivoOtro || '') : m; }).join(' · ')],

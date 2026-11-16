@@ -21,7 +21,7 @@ var CONF = {
 };
 
 var HEADERS_CONF = ['N° CARGO', 'FECHA', 'MÓDULO', 'REFERENCIA', 'ID_EQUIPO', 'CLIENTE', 'TÉCNICO',
-  'FIRMA CLIENTE', 'RECIBIÓ', 'DNI / CARGO', 'CORREO', 'ENVÍO', 'PDF', 'ID_REGISTRO'];
+  'FIRMA CLIENTE', 'RECIBIÓ', 'DNI / CARGO', 'CORREO', 'ENVÍO', 'PDF', 'ID_REGISTRO', 'OBSERVACIONES'];
 
 var CARPETA_MODULO_ = {
   mantenimiento: '1. Mantenimiento', instalacion: '2. Instalación', incidencia: '3. Incidencias',
@@ -68,7 +68,7 @@ function procesarConformidad_(idRegistro, modulo, datos, res, usuario) {
   hojaConformidades_().appendRow([
     numero || '—', fecha, nombreModulo_(modulo), String(res.ticket || c.referencia || ''), c.idEquipo || '', c.cliente || '',
     usuario.nombre, c.tipo === 'almacen' ? 'ALMACÉN' : (c.firmo === 'Sí' ? 'SÍ' : 'NO · ' + (c.motivo || '')),
-    c.nombre || '', c.cargo || '', c.correo || '', envio, url, idRegistro,
+    c.nombre || '', c.cargo || '', c.correo || '', envio, url, idRegistro, c.observaciones || '',
   ]);
   return { numero: numero, url: url, envio: envio };
 }
@@ -125,6 +125,9 @@ function htmlCargo_(numero, fecha, modulo, c, datos, res, usuario) {
   h.push('<div class="sec">' + (visita ? 'Detalle de la visita' : 'Detalle del trabajo') + '</div><table class="kv">');
   filas.forEach(function(r){ h.push(fila_(r[0], r[1])); });
   h.push('</table>');
+
+  h.push('<div class="sec">Observaciones</div>');
+  h.push('<div class="box" style="min-height:38px">' + (c.observaciones ? e(c.observaciones).replace(/\n/g, '<br>') : '<span style="color:#8A929D">Sin observaciones.</span>') + '</div>');
 
   if (fotos.length) {
     h.push('<div class="sec">Evidencia</div><table><tr>');
@@ -248,6 +251,8 @@ function hojaConformidades_() {
     sh.getRange(1, 1, 1, HEADERS_CONF.length).setValues([HEADERS_CONF]).setFontWeight('bold').setBackground('#15191E').setFontColor('#FFFFFF');
     sh.setFrozenRows(1);
     sh.setColumnWidth(6, 220); sh.setColumnWidth(13, 260);
+  } else if (sh.getRange(1, HEADERS_CONF.length).getValue() === '') {   // hoja creada con la versión anterior
+    sh.getRange(1, HEADERS_CONF.length).setValue(HEADERS_CONF[HEADERS_CONF.length - 1]).setFontWeight('bold').setBackground('#15191E').setFontColor('#FFFFFF');
   }
   return sh;
 }

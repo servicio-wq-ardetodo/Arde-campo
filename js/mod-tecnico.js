@@ -601,12 +601,17 @@
         if (!e.cfCorreo || e.cfCorreo === e._cfAuto) { e.cfCorreo = g; e._cfAuto = g; }
       });
 
+      var campoObs = f.area('cfObs', opt.tituloObs || 'Observaciones del cargo', {
+        ph: almacen ? 'Ej. frasco con sello abierto, equipo con rayones…' : 'Ej. equipo encontrado apagado, se recomienda no moverlo de su ubicación…',
+        hint: almacen ? 'Se imprimen en el cargo de salida.' : 'Se imprimen en el PDF que recibe el cliente. Escríbelas antes de que firme.' });
       var tarjetaCliente = almacen
         ? f.card('Conformidad de salida', paso, [
+            campoObs,
             f.text('cfNombre', 'Quién entrega en almacén', { req: true, ph: 'Nombre y apellido' }),
             f.firma('cfFirma', 'Firma de quien entrega', { req: true }),
           ])
         : f.card(opt.tituloCard || 'Conformidad del cliente', paso, [
+            campoObs,
             f.seg('cfPres', '¿El cliente firma?', [{ v: 'Sí', t: 'Sí, firma', s: opt.subFirma || 'Da su conformidad' }, { v: 'No', t: 'No disponible', s: 'No hay quién firme' }], { req: true }),
             f.si(function () { return e.cfPres === 'Sí'; }, [
               f.text('cfNombre', 'Nombre de quien recibe', { req: function () { return e.cfPres === 'Sí'; }, ph: 'Nombre y apellido' }),
@@ -663,11 +668,12 @@
       item.datos.conformidad = {
         tipo: almacen ? 'almacen' : (opt.tipo || 'cliente'),
         cliente: info.cliente || '', direccion: info.direccion || '', idEquipo: info.idEquipo || '', referencia: info.referencia || '',
-        filas: (info.filas || []).filter(function (r) { return r && r[1] != null && String(r[1]).trim() !== '' && String(r[1]) !== 'undefined'; })
+        filas: (info.filas || []).filter(function (r) { return r && r[0] !== 'Observaciones' && r[1] != null && String(r[1]).trim() !== '' && String(r[1]) !== 'undefined'; })
           .map(function (r) { return [String(r[0]), String(r[1])]; }),
         firmo: firma ? 'Sí' : 'No',
         nombre: firma ? (e.cfNombre || '') : (e.cfNombreNo || ''),
         cargo: firma ? (e.cfCargo || '') : '',
+        observaciones: String(e.cfObs || '').trim(),
         motivo: firma ? '' : (e.cfMotivo === 'Otro' ? 'Otro: ' + (e.cfMotivoOtro || '') : e.cfMotivo),
         correo: almacen || e.cfSinCorreo === 'Sí' ? '' : correos(e.cfCorreo).join(', '),
         firmaCliente: firma ? b64(e.cfFirma) : '',
