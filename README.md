@@ -96,6 +96,7 @@ Tras 6 PIN incorrectos, ese celular queda bloqueado 10 minutos.
 - Para crear la estructura dentro de otra carpeta (ej. "Proyecto Josef"), pon su ID en `CONF.CARPETA_PADRE_ID` (Conformidad.gs). Para recibir copia oculta de cada cargo, usa `CONF.COPIA_OCULTA`.
 
 **Supervisor (Paul):**
+- ⚠️ **Etapa 1: todo lo de cobranza está OCULTO** (no se lee el Sheet de Cobranzas ni se muestra deuda). Para activarlo: en `Supervision.gs` cambia `COBRANZA_ACTIVA: false` a `true` y publica una Nueva versión.
 - **Prioridades**: morosos (hoja CXC de COBRANZA ESPACIOS QUE ARDEN: PAGÓ = NO y ya vencido) y clientes problema (3+ incidencias en 60 días o una abierta hace más de 7 días). Toca un cliente para registrar la visita.
 - **Visita a cliente**: primero se elige el motivo (Cliente Feliz / Incidencias / Cobranza / Otro). Con **Cobranza** la lista de clientes sale del Sheet de Cobranzas (DATA + CXC: deuda vencida, por vencer, al día); sin Cobranza, sale de **REF_Clientes**. Cliente Feliz se graba en el **mismo Sheet de Cliente Feliz** (mismas columnas, el dashboard sigue igual). Compromisos de pago van a **VISITAS_SUPERVISION** y aparecen en el resumen de las 7 p.m. un día antes de vencer. Genera **Acta de visita** en PDF con firmas.
 - La cuenta que implementa la API debe tener acceso al Sheet de Cobranza y al de Cliente Feliz.

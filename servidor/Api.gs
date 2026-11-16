@@ -220,6 +220,7 @@ function datos_(req, usuario) {
     var sup = clientesSupervision_();
     out.clientes = sup.clientes;
     out.cobranza = sup.cobranza;
+    out.cobranzaActiva = SUP.COBRANZA_ACTIVA;
     if (sup.error) out.cobranzaError = sup.error;
     out.correos = out.correos || correosClientes_();
   }

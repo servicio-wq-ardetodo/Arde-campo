@@ -8,6 +8,8 @@
 // ============================================================
 
 var SUP = {
+  // Etapa 1 con Paul: cobranza OCULTA. Para activarla: true + Nueva versión de la implementación.
+  COBRANZA_ACTIVA: false,
   COBRANZA_ID: '1PjFkTPF4whqMeu0sZ4-ES6AK9BfP7oadiOxUXq3iGAo',
   COBRANZA_HOJA: 'CXC',
   COBRANZA_CLIENTES: 'DATA',
@@ -71,7 +73,7 @@ function clientesSupervision_() {
   });
 
   // 3) Cobranza = lista del Sheet de Cobranzas (DATA + CXC), enlazada a la cartera cuando el nombre coincide
-  var cob = cobranza_();
+  var cob = SUP.COBRANZA_ACTIVA ? cobranza_() : { lista: [], error: '' };
   cob.lista.forEach(function(m){
     var c = null;
     for (var i = 0; i < m.nombres.length && !c; i++) c = buscarClienteParecido_(mapa, m.nombres[i]);
@@ -346,7 +348,8 @@ function actualizarApp() {
   }
   hojaVisitas_(); hojaConformidades_(); hojaCorreos_();
   CacheService.getScriptCache().remove('usuarios_activos');
-  var r = cobranza_();
   Logger.log(existe ? 'Paul ya existía en USUARIOS_APP.' : 'Paul Espichan creado con PIN ' + pin);
+  if (!SUP.COBRANZA_ACTIVA) { Logger.log('Cobranza: oculta (SUP.COBRANZA_ACTIVA = false)'); return; }
+  var r = cobranza_();
   Logger.log('Cobranza: ' + (r.error || r.lista.length + ' cliente(s) leídos, ' + r.lista.filter(function(m){ return m.vencido > 0; }).length + ' con deuda vencida'));
 }

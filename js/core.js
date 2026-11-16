@@ -146,6 +146,7 @@
       clientes: d.clientes || [],
       cobranza: d.cobranza || [],
       cobranzaError: d.cobranzaError || '',
+      cobranzaActiva: d.cobranzaActiva === true,
     };
     var usados = {};
     recientes.forEach(function (it) {
