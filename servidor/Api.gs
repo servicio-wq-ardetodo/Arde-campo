@@ -10,7 +10,7 @@
 // ============================================================
 
 var APP = {
-  VERSION: '1.2.0',
+  VERSION: '1.3.0',
   SHEET_USUARIOS: 'USUARIOS_APP',
   SHEET_LOG: 'LOG_APP',
   TOKEN_DIAS: 60,
@@ -219,6 +219,7 @@ function datos_(req, usuario) {
   if (puedeUsar_(usuario.rol, 'SUPERVISOR')) {
     var sup = clientesSupervision_();
     out.clientes = sup.clientes;
+    out.cobranza = sup.cobranza;
     if (sup.error) out.cobranzaError = sup.error;
     out.correos = out.correos || correosClientes_();
   }

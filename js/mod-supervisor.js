@@ -33,33 +33,73 @@
   function soles(n) { return 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function tiene(e, m) { return (e.motivos || []).indexOf(m) !== -1; }
   function n(v) { var x = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(x) ? x : NaN; }
-  function clienteDe(v, k) { return (v.clientes || []).filter(function (c) { return c.k === k; })[0] || null; }
+  // Cliente elegido, sea de la cartera (REF_Clientes) o de Cobranzas ("cob:RUC").
+  // Devuelve un objeto único con lo que se sepa de ambos lados.
+  function cartera(v, k) { return (v.clientes || []).filter(function (c) { return c.k === k; })[0] || null; }
+  function cobro(v, k) { return (v.cobranza || []).filter(function (m) { return m.k === k; })[0] || null; }
+  function deudaDe(m) {
+    if (!m || !(m.vencido > 0 || m.porVencer > 0)) return null;
+    return { total: m.vencido, docs: m.docsVencidos, diasMax: m.diasMax, desde: m.desde, razon: m.razon, celular: m.celular, asesor: m.asesor,
+      estadoCliente: m.estadoCliente, porVencer: m.porVencer, docsPorVencer: m.docsPorVencer };
+  }
+  function clienteDe(v, k) {
+    if (!k || k === '_otro') return null;
+    if (k.indexOf('cob:') === 0) {
+      var m = cobro(v, k); if (!m) return null;
+      var c = m.carteraK ? cartera(v, m.carteraK) : null;
+      return { k: k, cliente: m.nombre, nombreCartera: c ? c.cliente : '', ruc: m.ruc, razon: m.razon, direccion: c ? c.direccion : '', distrito: c ? c.distrito : '',
+        tipo: c ? c.tipo : '', equipos: c ? c.equipos : [], inc60: c ? c.inc60 : 0, incAbiertas: c ? c.incAbiertas : 0, incViejaDias: c ? c.incViejaDias : 0,
+        incs: c ? c.incs : [], problema: c ? c.problema : false, deuda: deudaDe(m), desdeCobranza: true };
+    }
+    var x = cartera(v, k); if (!x) return null;
+    var mm = x.cobK ? cobro(v, x.cobK) : null;
+    return Object.assign({}, x, { nombreCartera: x.cliente, ruc: mm ? mm.ruc : '', razon: mm ? mm.razon : '', deuda: deudaDe(mm) });
+  }
 
   function etiquetas(c) {
     var t = [];
-    if (c.deuda) t.push(h('span', { class: 'ptag err', text: soles(c.deuda.total) + ' · ' + c.deuda.diasMax + ' d' }));
+    if (c.deuda && c.deuda.total > 0) t.push(h('span', { class: 'ptag err', text: soles(c.deuda.total) + ' · ' + c.deuda.diasMax + ' d' }));
     if (c.incAbiertas) t.push(h('span', { class: 'ptag warn', text: c.incAbiertas + ' abierta' + (c.incAbiertas > 1 ? 's' : '') + (c.incViejaDias > 7 ? ' · ' + c.incViejaDias + ' d' : '') }));
     if (c.inc60) t.push(h('span', { class: 'ptag' + (c.inc60 >= 3 ? ' warn' : ''), text: c.inc60 + ' inc. en 60 d' }));
     if (c.equipos && c.equipos.length) t.push(h('span', { class: 'ptag', text: c.equipos.length + ' equipo' + (c.equipos.length > 1 ? 's' : '') }));
     else if (c.deuda && /BAJA|INACTIVO/i.test(c.deuda.estadoCliente || '')) t.push(h('span', { class: 'ptag', text: 'Cliente de baja' }));
+    else if (c.desdeCobranza) t.push(h('span', { class: 'ptag', text: 'Sin equipo en cartera' }));
     return t;
   }
 
-  function itemsClientes(v) {
+  // Lista de REF_Clientes (Cliente Feliz, Incidencias, Otro)
+  function itemsCartera(v) {
     var l = (v.clientes || []).slice().sort(function (a, b) {
-      var pa = a.problema ? 0 : a.moroso ? 1 : 2, pb = b.problema ? 0 : b.moroso ? 1 : 2;
-      if (pa !== pb) return pa - pb;
-      if (pa === 1) return (b.deuda.total || 0) - (a.deuda.total || 0);
-      if (pa === 0) return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2);
+      if (a.problema !== b.problema) return a.problema ? -1 : 1;
+      if (a.problema) return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2);
       return String(a.cliente).localeCompare(String(b.cliente));
     });
     var out = l.map(function (c) {
-      var tag = c.problema ? (c.inc60 + ' inc.') : c.moroso ? soles(c.deuda.total) : (c.equipos || []).length + ' eq.';
-      return { v: c.k, t: c.cliente, s: [String(c.distrito || '').split(',')[0], c.ruc ? 'RUC ' + c.ruc : ''].filter(Boolean).join(' · ') || 'Sin dirección registrada',
-        tag: tag, tagCls: c.moroso && !c.problema ? 'inact' : '', group: c.problema ? 'Clientes con incidencias' : c.moroso ? 'Morosos' : 'Resto de la cartera',
-        buscar: [c.cliente, c.ruc, c.razon, c.distrito, (c.equipos || []).join(' ')].join(' '), c: c };
+      return { v: c.k, t: c.cliente, s: [c.direccion, String(c.distrito || '').split(',')[0]].filter(Boolean).join(' · ') || 'Sin dirección registrada',
+        tag: c.problema ? c.inc60 + ' inc.' : c.equipos.length + ' eq.', group: c.problema ? 'Clientes con incidencias' : 'Cartera (REF_Clientes)',
+        buscar: [c.cliente, c.distrito, c.direccion, c.equipos.join(' ')].join(' ') };
     });
     out.push({ v: '_otro', t: 'Otro cliente (no está en la lista)', s: 'Escribir el nombre', group: 'Otro' });
+    return out;
+  }
+
+  // Lista del Sheet de Cobranzas (motivo Cobranza)
+  function itemsCobranza(v) {
+    var grupo = function (m) { return m.vencido > 0 ? 0 : m.porVencer > 0 ? 1 : 2; };
+    var l = (v.cobranza || []).slice().sort(function (a, b) {
+      var ga = grupo(a), gb = grupo(b);
+      if (ga !== gb) return ga - gb;
+      if (ga === 0) return b.vencido - a.vencido;
+      if (ga === 1) return b.porVencer - a.porVencer;
+      return String(a.nombre).localeCompare(String(b.nombre));
+    });
+    var out = l.map(function (m) {
+      var g = grupo(m);
+      return { v: m.k, t: m.nombre, s: [m.ruc ? 'RUC ' + m.ruc : '', m.razon !== m.nombre ? m.razon : ''].filter(Boolean).join(' · '),
+        tag: g === 0 ? soles(m.vencido) : g === 1 ? soles(m.porVencer) : 'Al día', tagCls: g === 2 ? 'inact' : '',
+        group: g === 0 ? 'Deuda vencida' : g === 1 ? 'Por vencer' : 'Al día', buscar: m.nombres.concat([m.ruc, m.razon]).join(' ') };
+    });
+    out.push({ v: '_otro', t: 'Otro cliente (no está en Cobranzas)', s: 'Escribir el nombre', group: 'Otro' });
     return out;
   }
 
@@ -69,31 +109,43 @@
   A.modulos.sup_prioridades = {
     id: 'sup_prioridades', rol: 'SUPERVISOR', titulo: 'Prioridades', sub: 'Incidencias y morosos', ico: '🎯', hue: 'red',
     soloLectura: true,
-    contar: function (v) { return (v.clientes || []).filter(function (c) { return (c.moroso && (c.equipos || []).length) || c.problema; }).length; },
+    contar: function (v) {
+      var prob = (v.clientes || []).filter(function (c) { return c.problema; });
+      var mor = (v.cobranza || []).filter(function (m) { var c = m.carteraK && cartera(v, m.carteraK); return m.vencido > 0 && c && !c.problema; });
+      return prob.length + mor.length;
+    },
     vista: function (c) {
       var v = c.vista;
-      // Primero incidencias: los clientes problema van arriba (aunque también deban); morosos después, sin repetirlos
-      var morosos = (v.clientes || []).filter(function (x) { return x.moroso && !x.problema; }).sort(function (a, b) { return b.deuda.total - a.deuda.total; });
-      var problema = (v.clientes || []).filter(function (x) { return x.problema; }).sort(function (a, b) { return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2); });
-      var suma = function (l) { return l.reduce(function (s, x) { return s + x.deuda.total; }, 0); };
-      var conEq = morosos.filter(function (x) { return (x.equipos || []).length; });
-      var sinEq = morosos.filter(function (x) { return !(x.equipos || []).length; });
-      var tarjeta = function (x) {
-        return h('button', { class: 'prio-item', onclick: function () { c.abrir('sup_visita', { cliente: x.k, motivos: (x.problema ? ['Incidencias recurrentes'] : []).concat(x.moroso ? ['Cobranza'] : []) }); } },
+      // 1° clientes con incidencias (cartera). 2° morosos de Cobranzas (sin repetir a los de arriba)
+      var problema = (v.clientes || []).filter(function (x) { return x.problema; })
+        .sort(function (a, b) { return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2); });
+      var morosos = (v.cobranza || []).filter(function (m) { var x = m.carteraK && cartera(v, m.carteraK); return m.vencido > 0 && !(x && x.problema); })
+        .sort(function (a, b) { return b.vencido - a.vencido; });
+      var conEq = morosos.filter(function (m) { return m.carteraK; });
+      var sinEq = morosos.filter(function (m) { return !m.carteraK; });
+      var suma = function (l) { return l.reduce(function (s, m) { return s + m.vencido; }, 0); };
+      var tarjeta = function (clave, motivos) {
+        var x = clienteDe(v, clave); if (!x) return null;
+        return h('button', { class: 'prio-item', onclick: function () { c.abrir('sup_visita', { cliente: clave, motivos: motivos }); } },
           h('b', { text: x.cliente }),
           h('small', { text: [x.direccion, String(x.distrito || '').split(',')[0]].filter(Boolean).join(' · ') || (x.razon || '') }),
           h('div', { class: 'prio-tags' }, etiquetas(x)));
       };
+      var tarjetaProblema = function (x) {
+        var m = x.cobK ? cobro(v, x.cobK) : null;
+        return m && m.vencido > 0 ? tarjeta(m.k, ['Incidencias recurrentes', 'Cobranza']) : tarjeta(x.k, ['Incidencias recurrentes']);
+      };
+      var tarjetaMoroso = function (m) { return tarjeta(m.k, ['Cobranza']); };
       var vacio = function (t) { return h('div', { class: 'empty' }, h('div', { class: 'e-ico', text: '✅' }), t); };
       return [
         v.cobranzaError ? h('div', { class: 'banner warn' }, h('span', { class: 'bi', text: '⚠️' }), h('div', null, h('b', { text: 'No se pudo leer Cobranza' }), v.cobranzaError)) : null,
         h('div', { class: 'group-title', text: 'Clientes con incidencias · ' + problema.length }),
         h('div', { class: 'hint', style: { margin: '-4px 2px 10px' }, text: '3 o más incidencias en 60 días, o una incidencia abierta hace más de 7 días.' }),
-        h('div', { class: 'prio' }, problema.length ? problema.map(tarjeta) : vacio('Ningún cliente con incidencias recurrentes')),
+        h('div', { class: 'prio' }, problema.length ? problema.map(tarjetaProblema) : vacio('Ningún cliente con incidencias recurrentes')),
         h('div', { class: 'group-title', text: 'Morosos con equipo instalado · ' + conEq.length + ' · ' + soles(suma(conEq)) }),
-        h('div', { class: 'prio' }, conEq.length ? conEq.map(tarjeta) : vacio('Sin deuda vencida')),
+        h('div', { class: 'prio' }, conEq.length ? conEq.map(tarjetaMoroso) : vacio('Sin deuda vencida')),
         sinEq.length ? h('div', { class: 'group-title', text: 'Deuda de clientes sin equipo (bajas) · ' + sinEq.length + ' · ' + soles(suma(sinEq)) }) : null,
-        sinEq.length ? h('div', { class: 'prio' }, sinEq.map(tarjeta)) : null,
+        sinEq.length ? h('div', { class: 'prio' }, sinEq.map(tarjetaMoroso)) : null,
       ];
     },
   };
@@ -111,29 +163,42 @@
       var esInc = function () { return tiene(e, 'Incidencias recurrentes'); };
       var esCob = function () { return tiene(e, 'Cobranza'); };
       var otro = function () { return e.cliente === '_otro'; };
+      // Si cambia la lista (con o sin Cobranza), el cliente elegido de la otra lista se limpia
+      f.vigias.unshift(function () {
+        if (!e.cliente || e.cliente === '_otro') return;
+        var deCobranza = e.cliente.indexOf('cob:') === 0;
+        if (deCobranza !== esCob()) {
+          var x = clienteDe(v, e.cliente), destino = '';
+          if (x && esCob() && x.cobK) destino = x.cobK;                       // cartera → su RUC en Cobranzas
+          if (x && !esCob() && deCobranza) { var m = cobro(v, e.cliente); destino = m && m.carteraK || ''; }   // Cobranzas → cartera
+          e.cliente = destino;
+        }
+      });
       return [
-        f.card('Cliente', '1', [
-          f.pick('cliente', 'Cliente visitado', { req: true, titulo: 'Clientes', ph: 'Buscar cliente', buscarPh: 'Nombre, RUC, distrito o EQP', items: function () { return itemsClientes(v); } }),
+        f.card('Motivo de la visita', '1', [
+          f.multi('motivos', null, MOTIVOS, { req: true }),
+          f.si(function () { return tiene(e, 'Otro'); }, [f.text('motivoOtro', 'Especifica', { req: function () { return tiene(e, 'Otro'); } })]),
+        ]),
+        f.card('Cliente', '2', [
+          f.si(function () { return !(e.motivos || []).length; }, [h('div', { class: 'hint', text: 'Elige primero el motivo: con Cobranza la lista sale del Sheet de Cobranzas; con los demás, de REF_Clientes.' })]),
+          f.si(function () { return (e.motivos || []).length; }, [
+            f.pick('cliente', 'Cliente visitado', { req: true, titulo: 'Clientes', ph: 'Buscar cliente', buscarPh: 'Nombre, RUC, distrito o EQP',
+              items: function () { return esCob() ? itemsCobranza(v) : itemsCartera(v); } }),
+            f.calc(function () { return '<div class="hint" style="margin-top:-6px">' + (esCob() ? '📄 Lista del Sheet de Cobranzas' : '📋 Lista de la cartera (REF_Clientes)') + '</div>'; }),
+          ]),
           f.si(otro, [f.text('clienteOtro', 'Nombre del cliente', { req: otro, ph: 'Nombre comercial' }), f.text('direccionOtro', 'Dirección', { ph: 'Opcional' })]),
           f.datos(function () {
             var x = cli(); if (!x) return [];
             var d = x.deuda;
             return [
-              ['Dirección', [x.direccion, x.distrito].filter(Boolean).join(' · '), '', true],
+              x.desdeCobranza && x.razon && x.razon !== x.cliente ? ['Razón social', x.razon + (x.ruc ? ' · RUC ' + x.ruc : ''), '', true] : null,
+              ['Dirección', [x.direccion, x.distrito].filter(Boolean).join(' · ') || (x.desdeCobranza ? 'No figura en REF_Clientes' : '—'), '', true],
               ['Equipos', (x.equipos || []).join(', ') || 'Sin equipos en cartera', '', true],
-              ['Tipo de servicio', x.tipo ? ui.pillServicio(x.tipo) : '—'],
+              x.tipo ? ['Tipo de servicio', ui.pillServicio(x.tipo)] : null,
               ['Incidencias 60 días', String(x.inc60 || 0), x.inc60 >= 3 ? 'err' : ''],
-              d ? ['Deuda vencida', soles(d.total) + ' · ' + d.docs + ' doc.', 'err'] : ['Deuda vencida', 'Al día', 'ok'],
-              d ? ['Atraso máximo', d.diasMax + ' días', d.diasMax > 30 ? 'err' : 'warn'] : null,
-              d && d.estadoCliente ? ['Estado en Cobranza', d.estadoCliente] : null,
-              d && d.celular ? ['Celular (cobranza)', d.celular] : null,
-              d && d.asesor ? ['Asesor', d.asesor] : null,
+              d && d.total > 0 ? ['Deuda vencida', soles(d.total) + ' · ' + d.diasMax + ' d', 'err'] : ['Deuda vencida', 'Al día', 'ok'],
             ];
           }),
-        ]),
-        f.card('Motivo de la visita', '2', [
-          f.multi('motivos', null, MOTIVOS, { req: true }),
-          f.si(function () { return tiene(e, 'Otro'); }, [f.text('motivoOtro', 'Especifica', { req: function () { return tiene(e, 'Otro'); } })]),
         ]),
         f.si(esCF, [f.card('Cliente Feliz · lo que responde el cliente', null, [
           f.seg('cfSat', '¿Cómo calificarías tu experiencia con ARDE?', [1, 2, 3, 4, 5].map(function (x) { return { v: String(x), t: '★ ' + x }; }), { req: esCF, cls: 'estrellas' }),
@@ -163,9 +228,15 @@
         ])]),
         f.si(esCob, [f.card('Cobranza', null, [
           f.datos(function () {
-            var x = cli(), d = x && x.deuda; if (!d) return [['Deuda vencida', 'Sin deuda registrada en Cobranza', 'ok', true]];
-            return [['Total vencido', soles(d.total), 'err'], ['Documentos', String(d.docs)], ['Razón social', d.razon, '', true],
-              ['Vence desde', d.desde], ['Atraso máximo', d.diasMax + ' días']];
+            var x = cli(), d = x && x.deuda; if (!d) return [['Deuda', 'Sin documentos pendientes en Cobranzas', 'ok', true]];
+            return [
+              ['Total vencido', d.total > 0 ? soles(d.total) : 'S/ 0.00', d.total > 0 ? 'err' : 'ok'], ['Documentos vencidos', String(d.docs || 0)],
+              d.total > 0 ? ['Vence desde', d.desde] : null, d.total > 0 ? ['Atraso máximo', d.diasMax + ' días', d.diasMax > 30 ? 'err' : 'warn'] : null,
+              d.porVencer > 0 ? ['Por vencer', soles(d.porVencer) + ' · ' + d.docsPorVencer + ' doc.'] : null,
+              ['Razón social', d.razon, '', true],
+              d.celular ? ['Celular', d.celular] : null, d.asesor ? ['Asesor', d.asesor] : null,
+              d.estadoCliente ? ['Estado en Cobranzas', d.estadoCliente] : null,
+            ];
           }),
           h('div', { style: { height: '10px' } }),
           f.select('cobResultado', 'Resultado', RESULTADO_COBRO, { req: esCob }),
@@ -192,12 +263,12 @@
       var cf = tiene(e, 'Cliente Feliz'), cob = tiene(e, 'Cobranza'), inc = tiene(e, 'Incidencias recurrentes');
       return {
         modulo: 'sup_visita',
-        resumen: { t: otro ? e.clienteOtro : x.cliente, s: (e.motivos || []).join(' · ') },
+        resumen: { t: otro ? e.clienteOtro : (x.nombreCartera || x.cliente), s: (e.motivos || []).join(' · ') },
         datos: {
-          cliente: otro ? e.clienteOtro : x.cliente, ruc: x.ruc || '', razon: x.deuda ? x.deuda.razon : '',
+          cliente: otro ? e.clienteOtro : (x.nombreCartera || x.cliente), ruc: x.ruc || '', razon: x.razon || '',
           direccion: otro ? (e.direccionOtro || '') : x.direccion || '', distrito: otro ? '' : x.distrito || '',
           equipos: (x.equipos || []).join(', '), motivos: (e.motivos || []).map(function (m) { return m === 'Otro' ? 'Otro: ' + (e.motivoOtro || '') : m; }).join(' · '),
-          deudaAlVisitar: x.deuda ? x.deuda.total : 0, inc60: x.inc60 || 0,
+          deudaAlVisitar: x.deuda ? x.deuda.total || 0 : 0, inc60: x.inc60 || 0,
           hallazgos: e.hallazgos, acuerdos: e.acuerdos || '',
           incDiagnostico: inc ? e.incDiag : '', incAccion: inc ? e.incAccion : '',
           cobResultado: cob ? e.cobResultado : '', cobMonto: cob && e.cobMonto ? n(e.cobMonto) : '', cobFecha: cob ? (e.cobFecha || '') : '',
@@ -222,8 +293,8 @@
       if (tiene(e, 'Incidencias recurrentes')) filas.push(['Causa identificada', e.incDiag], ['Acción a seguir', e.incAccion]);
       if (tiene(e, 'Cobranza')) filas.push(['Cobranza', e.cobResultado + (e.cobMonto ? ' · ' + soles(n(e.cobMonto)) : '') + (e.cobFecha ? ' · ' + e.cobFecha.split('-').reverse().join('/') : '')]);
       filas.push(['Hallazgos', e.hallazgos], ['Acuerdos', e.acuerdos]);
-      return { cliente: otro ? e.clienteOtro : x.cliente, direccion: otro ? e.direccionOtro : [x.direccion, x.distrito].filter(Boolean).join(' · '),
-        idEquipo: '', referencia: otro ? e.clienteOtro : x.cliente, filas: filas };
+      return { cliente: otro ? e.clienteOtro : (x.nombreCartera || x.cliente), direccion: otro ? e.direccionOtro : [x.direccion, x.distrito].filter(Boolean).join(' · '),
+        idEquipo: '', referencia: otro ? e.clienteOtro : (x.nombreCartera || x.cliente), filas: filas };
     },
   });
 })();

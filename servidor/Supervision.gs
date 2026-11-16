@@ -27,36 +27,32 @@ var HEADERS_VISITAS = ['N° VISITA', 'FECHA', 'SUPERVISOR', 'CLIENTE', 'RUC', 'D
 // ── Lista de clientes para el supervisor ────────────────────
 
 function clientesSupervision_() {
-  var mapa = {}, lista = [];
+  var mapa = {}, cartera = [];
   var hoy = new Date();
-  function cliente(nombre) {
-    var k = claveCliente_(nombre);
-    if (!k) return null;
-    if (!mapa[k]) {
-      mapa[k] = { k: k, cliente: String(nombre).trim(), direccion: '', distrito: '', tipo: '', equipos: [], inc60: 0, incAbiertas: 0, incViejaDias: 0, incs: [], deuda: null };
-      lista.push(mapa[k]);
-    }
-    return mapa[k];
-  }
 
-  // 1) Cartera (REF_Clientes)
+  // 1) Cartera = REF_Clientes (equipos activos/inactivos agrupados por cliente)
   getEquipos().forEach(function(e){
-    var c = cliente(e.cliente); if (!c) return;
+    var k = claveCliente_(e.cliente); if (!k) return;
+    var c = mapa[k];
+    if (!c) {
+      c = mapa[k] = { k: k, cliente: String(e.cliente).trim(), direccion: e.direccion, distrito: e.distrito, tipo: e.tipoContrato || '',
+        equipos: [], inc60: 0, incAbiertas: 0, incViejaDias: 0, incs: [], deuda: null, cobK: '' };
+      cartera.push(c);
+    }
     c.equipos.push(e.id);
-    if (!c.direccion) { c.direccion = e.direccion; c.distrito = e.distrito; }
     if (!c.tipo && e.tipoContrato) c.tipo = e.tipoContrato;
   });
 
-  // 2) Incidencias
+  // 2) Incidencias (solo de clientes de la cartera)
   var sh = getSpreadsheet().getSheetByName('INCIDENCIAS');
   if (sh && sh.getLastRow() >= 2) {
     sh.getRange(2, 1, sh.getLastRow() - 1, 17).getValues().forEach(function(r){
       var f = r[2];
       if (!esFecha_(f) || !r[5]) return;
+      var c = mapa[claveCliente_(r[5])]; if (!c) return;
       var estado = String(r[16] || '').trim();
       var cerrada = /resuelto|atendido|cancel/i.test(estado);
       var dias = Math.floor((hoy - f) / 86400000);
-      var c = cliente(r[5]); if (!c) return;
       if (dias <= SUP.PROBLEMA_DIAS) {
         c.inc60++;
         c.incs.push({ ticket: String(r[0] || ''), fecha: Utilities.formatDate(f, 'America/Lima', 'dd/MM'), tipo: String(r[10] || r[12] || ''),
@@ -68,45 +64,69 @@ function clientesSupervision_() {
       }
     });
   }
+  cartera.forEach(function(c){
+    c.incs.sort(function(a, b){ return b._t - a._t; });
+    c.incs = c.incs.slice(0, 6).map(function(i){ delete i._t; return i; });
+    c.problema = c.inc60 >= SUP.PROBLEMA_INCIDENCIAS || (c.incAbiertas > 0 && c.incViejaDias > SUP.PROBLEMA_ABIERTA_DIAS);
+  });
 
-  // 3) Cobranza (morosos)
-  var cob = morosos_();
+  // 3) Cobranza = lista del Sheet de Cobranzas (DATA + CXC), enlazada a la cartera cuando el nombre coincide
+  var cob = cobranza_();
   cob.lista.forEach(function(m){
     var c = null;
     for (var i = 0; i < m.nombres.length && !c; i++) c = buscarClienteParecido_(mapa, m.nombres[i]);
-    if (!c) {
-      c = cliente(m.nombres[m.nombres.length - 1] || m.razon);
-      if (!c) return;
+    if (c) {
+      m.carteraK = c.k;
+      if (m.vencido > 0) {
+        if (c.deuda) { c.deuda.total += m.vencido; c.deuda.diasMax = Math.max(c.deuda.diasMax, m.diasMax); }
+        else c.deuda = { total: m.vencido, diasMax: m.diasMax };
+        if (!c.cobK || m.vencido > 0) c.cobK = m.k;
+      } else if (!c.cobK) c.cobK = m.k;
     }
-    if (c.deuda) {   // dos RUC para el mismo nombre: se suman
-      c.deuda.total += m.total; c.deuda.docs += m.docs; c.deuda.diasMax = Math.max(c.deuda.diasMax, m.diasMax);
-    } else {
-      c.deuda = { total: m.total, docs: m.docs, diasMax: m.diasMax, desde: m.desde, celular: m.celular, asesor: m.asesor, razon: m.razon, estadoCliente: m.estadoCliente };
-    }
-    c.ruc = c.ruc || m.ruc;
-    c.razon = c.razon || m.razon;
   });
-
-  lista.forEach(function(c){
-    c.incs.sort(function(a, b){ return b._t - a._t; });
-    c.incs = c.incs.slice(0, 6).map(function(i){ delete i._t; return i; });
-    if (c.deuda) c.deuda.total = Math.round(c.deuda.total * 100) / 100;
-    c.moroso = !!(c.deuda && c.deuda.total > 0);
-    c.problema = c.inc60 >= SUP.PROBLEMA_INCIDENCIAS || (c.incAbiertas > 0 && c.incViejaDias > SUP.PROBLEMA_ABIERTA_DIAS);
-  });
-  // Solo clientes con equipos, deuda o incidencias
-  var out = lista.filter(function(c){ return c.equipos.length || c.moroso || c.inc60; });
-  return { clientes: out, error: cob.error };
+  cartera.forEach(function(c){ c.moroso = !!(c.deuda && c.deuda.total > 0); if (c.deuda) c.deuda.total = Math.round(c.deuda.total * 100) / 100; });
+  return { clientes: cartera, cobranza: cob.lista, error: cob.error };
 }
 
-// Morosos desde CXC: PAGÓ = NO y ya vencido. Agrupado por RUC. Cache 10 min.
-function morosos_() {
+// Todos los clientes del Sheet de Cobranzas, agrupados por RUC.
+// vencido = PAGÓ NO y ya vencido · porVencer = PAGÓ NO y aún no vence. Cache 10 min.
+function cobranza_() {
   var cache = CacheService.getScriptCache();
-  var guardado = cache.get('morosos_v1');
+  var guardado = cache.get('cobranza_v2');
   if (guardado) return JSON.parse(guardado);
   var res = { lista: [], error: '' };
   try {
     var ss = SpreadsheetApp.openById(SUP.COBRANZA_ID);
+    var porRuc = {};
+    var entrada = function(ruc, razon) {
+      var key = ruc || ('rs-' + claveCliente_(razon));
+      var m = porRuc[key];
+      if (!m) {
+        m = porRuc[key] = { k: 'cob:' + key, ruc: ruc, razon: String(razon || '').trim(), comercial: '', nombres: [], vencido: 0, docsVencidos: 0,
+          diasMax: 0, venc0: null, porVencer: 0, docsPorVencer: 0, celular: '', asesor: '', estadoCliente: '', carteraK: '' };
+        res.lista.push(m);
+      }
+      return m;
+    };
+
+    // DATA: nombre comercial por RUC (todos los clientes, deban o no)
+    var data = ss.getSheetByName(SUP.COBRANZA_CLIENTES);
+    if (data) {
+      var dv = data.getDataRange().getValues();
+      var dh = filaEncabezado_(dv, 'RUC');
+      var dCli = columna_(dv[dh], 'CLIENTE'), dRuc = columna_(dv[dh], 'RUC'), dCel = columna_(dv[dh], 'CELULAR'), dEst = columna_(dv[dh], 'ESTADO');
+      if (dCli >= 0 && dRuc >= 0) for (var j = dh + 1; j < dv.length; j++) {
+        var nom = String(dv[j][dCli] || '').trim();
+        if (!nom || /^TOTAL$/i.test(nom)) continue;
+        var ruc = String(dv[j][dRuc] || '').replace(/\D/g, '');
+        var m = entrada(ruc, nom);
+        if (!m.comercial) m.comercial = nom;
+        if (m.nombres.indexOf(nom) === -1) m.nombres.push(nom);
+        if (dCel >= 0 && !m.celular) m.celular = String(dv[j][dCel] || '').replace(/NO TIENE/i, '').trim();
+      }
+    }
+
+    // CXC: documentos pendientes
     var sh = ss.getSheetByName(SUP.COBRANZA_HOJA);
     if (!sh) throw new Error('No existe la hoja ' + SUP.COBRANZA_HOJA);
     var vals = sh.getDataRange().getValues();
@@ -116,56 +136,45 @@ function morosos_() {
     var C = { venc: col('VENCIMIENTO'), estadoCli: col('ESTADO CLIENTE'), cel: col('CELULAR'), ruc: col('RUC'), cliente: col('RAZON SOCIAL'),
       total: col('TOTAL'), pago: col('PAGO'), estadoPago: col('ESTADO DE PAGO'), asesor: col('ASESOR') };
     if (C.ruc < 0 || C.total < 0 || C.pago < 0) throw new Error('No encontré las columnas RUC / TOTAL / PAGÓ en CXC');
-
-    // Nombres comerciales por RUC (hoja DATA)
-    var comerciales = {};
-    var data = ss.getSheetByName(SUP.COBRANZA_CLIENTES);
-    if (data) {
-      var dv = data.getDataRange().getValues();
-      var dh = filaEncabezado_(dv, 'RUC');
-      var dCli = columna_(dv[dh], 'CLIENTE'), dRuc = columna_(dv[dh], 'RUC');
-      if (dCli >= 0 && dRuc >= 0) for (var j = dh + 1; j < dv.length; j++) {
-        var ruc = String(dv[j][dRuc] || '').replace(/\D/g, '');
-        if (ruc && dv[j][dCli]) (comerciales[ruc] = comerciales[ruc] || []).push(String(dv[j][dCli]).trim());
-      }
-    }
-
     var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    var porRuc = {};
     for (var i = fh + 1; i < vals.length; i++) {
       var r = vals[i];
-      var pago = String(r[C.pago] || '').trim().toUpperCase();
-      if (pago !== 'NO') continue;
-      var venc = aFecha_(r[C.venc]);
-      var estado = C.estadoPago >= 0 ? String(r[C.estadoPago] || '').toUpperCase() : '';
-      if (!(estado.indexOf('VENCIDO') !== -1 || (venc && venc < hoy))) continue;
+      var razon = String(r[C.cliente] || '').trim();
+      var rucR = String(r[C.ruc] || '').replace(/\D/g, '');
+      if (!razon && !rucR) continue;
+      var x = entrada(rucR, razon);
+      if (!x.razon || x.razon === x.comercial) x.razon = razon || x.razon;
+      if (C.asesor >= 0 && r[C.asesor]) x.asesor = String(r[C.asesor]).trim();
+      if (C.estadoCli >= 0 && r[C.estadoCli]) x.estadoCliente = String(r[C.estadoCli]).trim();
+      if (C.cel >= 0 && !x.celular) x.celular = String(r[C.cel] || '').replace(/NO TIENE/i, '').trim();
+      if (String(r[C.pago] || '').trim().toUpperCase() !== 'NO') continue;
       var total = aNumero_(r[C.total]);
       if (!(total > 0)) continue;
-      var rucR = String(r[C.ruc] || '').replace(/\D/g, '') || String(r[C.cliente] || '');
-      var m = porRuc[rucR];
-      if (!m) {
-        m = porRuc[rucR] = { ruc: /^\d+$/.test(rucR) ? rucR : '', razon: String(r[C.cliente] || '').trim(), total: 0, docs: 0, diasMax: 0, venc0: null,
-          celular: C.cel >= 0 ? String(r[C.cel] || '').replace(/NO TIENE/i, '').trim() : '', asesor: C.asesor >= 0 ? String(r[C.asesor] || '').trim() : '',
-          estadoCliente: C.estadoCli >= 0 ? String(r[C.estadoCli] || '').trim() : '' };
-        res.lista.push(m);
-      }
-      m.total += total; m.docs++;
-      if (venc) {
-        m.diasMax = Math.max(m.diasMax, Math.floor((hoy - venc) / 86400000));
-        if (!m.venc0 || venc < m.venc0) m.venc0 = venc;
+      var venc = aFecha_(r[C.venc]);
+      var estado = C.estadoPago >= 0 ? String(r[C.estadoPago] || '').toUpperCase() : '';
+      if (estado.indexOf('VENCIDO') !== -1 || (venc && venc < hoy)) {
+        x.vencido += total; x.docsVencidos++;
+        if (venc) {
+          x.diasMax = Math.max(x.diasMax, Math.floor((hoy - venc) / 86400000));
+          if (!x.venc0 || venc < x.venc0) x.venc0 = venc;
+        }
+      } else {
+        x.porVencer += total; x.docsPorVencer++;
       }
     }
     res.lista.forEach(function(m){
-      m.total = Math.round(m.total * 100) / 100;
+      m.vencido = Math.round(m.vencido * 100) / 100;
+      m.porVencer = Math.round(m.porVencer * 100) / 100;
       m.desde = m.venc0 ? Utilities.formatDate(m.venc0, 'America/Lima', 'dd/MM/yyyy') : '';
       delete m.venc0;
-      m.nombres = (comerciales[m.ruc] || []).concat([m.razon]);
+      if (m.razon && m.nombres.indexOf(m.razon) === -1) m.nombres.push(m.razon);
+      m.nombre = m.comercial || m.razon;
     });
   } catch (e) {
     res.error = 'Cobranza: ' + (e.message || e);
     res.lista = [];
   }
-  try { cache.put('morosos_v1', JSON.stringify(res), 600); } catch (e) {}
+  try { cache.put('cobranza_v2', JSON.stringify(res), 600); } catch (e) {}
   return res;
 }
 
@@ -337,7 +346,7 @@ function actualizarApp() {
   }
   hojaVisitas_(); hojaConformidades_(); hojaCorreos_();
   CacheService.getScriptCache().remove('usuarios_activos');
-  var r = morosos_();
+  var r = cobranza_();
   Logger.log(existe ? 'Paul ya existía en USUARIOS_APP.' : 'Paul Espichan creado con PIN ' + pin);
-  Logger.log('Cobranza: ' + (r.error || r.lista.length + ' cliente(s) con deuda vencida'));
+  Logger.log('Cobranza: ' + (r.error || r.lista.length + ' cliente(s) leídos, ' + r.lista.filter(function(m){ return m.vencido > 0; }).length + ' con deuda vencida'));
 }

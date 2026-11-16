@@ -144,6 +144,8 @@
       descargadoEn: desde,
       correos: d.correos || {},
       clientes: d.clientes || [],
+      cobranza: d.cobranza || [],
+      cobranzaError: d.cobranzaError || '',
     };
     var usados = {};
     recientes.forEach(function (it) {
