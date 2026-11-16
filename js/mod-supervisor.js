@@ -47,16 +47,16 @@
 
   function itemsClientes(v) {
     var l = (v.clientes || []).slice().sort(function (a, b) {
-      var pa = a.moroso ? 0 : a.problema ? 1 : 2, pb = b.moroso ? 0 : b.problema ? 1 : 2;
+      var pa = a.problema ? 0 : a.moroso ? 1 : 2, pb = b.problema ? 0 : b.moroso ? 1 : 2;
       if (pa !== pb) return pa - pb;
-      if (pa === 0) return (b.deuda.total || 0) - (a.deuda.total || 0);
-      if (pa === 1) return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2);
+      if (pa === 1) return (b.deuda.total || 0) - (a.deuda.total || 0);
+      if (pa === 0) return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2);
       return String(a.cliente).localeCompare(String(b.cliente));
     });
     var out = l.map(function (c) {
-      var tag = c.moroso ? soles(c.deuda.total) : c.problema ? (c.inc60 + ' inc.') : (c.equipos || []).length + ' eq.';
+      var tag = c.problema ? (c.inc60 + ' inc.') : c.moroso ? soles(c.deuda.total) : (c.equipos || []).length + ' eq.';
       return { v: c.k, t: c.cliente, s: [String(c.distrito || '').split(',')[0], c.ruc ? 'RUC ' + c.ruc : ''].filter(Boolean).join(' · ') || 'Sin dirección registrada',
-        tag: tag, tagCls: c.moroso ? 'inact' : '', group: c.moroso ? 'Morosos' : c.problema ? 'Clientes problema' : 'Resto de la cartera',
+        tag: tag, tagCls: c.moroso && !c.problema ? 'inact' : '', group: c.problema ? 'Clientes con incidencias' : c.moroso ? 'Morosos' : 'Resto de la cartera',
         buscar: [c.cliente, c.ruc, c.razon, c.distrito, (c.equipos || []).join(' ')].join(' '), c: c };
     });
     out.push({ v: '_otro', t: 'Otro cliente (no está en la lista)', s: 'Escribir el nombre', group: 'Otro' });
@@ -67,18 +67,19 @@
   // PRIORIDADES (solo lectura) → toca un cliente para visitarlo
   // ============================================================
   A.modulos.sup_prioridades = {
-    id: 'sup_prioridades', rol: 'SUPERVISOR', titulo: 'Prioridades', sub: 'Morosos y clientes problema', ico: '🎯', hue: 'red',
+    id: 'sup_prioridades', rol: 'SUPERVISOR', titulo: 'Prioridades', sub: 'Incidencias y morosos', ico: '🎯', hue: 'red',
     soloLectura: true,
     contar: function (v) { return (v.clientes || []).filter(function (c) { return (c.moroso && (c.equipos || []).length) || c.problema; }).length; },
     vista: function (c) {
       var v = c.vista;
-      var morosos = (v.clientes || []).filter(function (x) { return x.moroso; }).sort(function (a, b) { return b.deuda.total - a.deuda.total; });
-      var problema = (v.clientes || []).filter(function (x) { return x.problema && !x.moroso; }).sort(function (a, b) { return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2); });
+      // Primero incidencias: los clientes problema van arriba (aunque también deban); morosos después, sin repetirlos
+      var morosos = (v.clientes || []).filter(function (x) { return x.moroso && !x.problema; }).sort(function (a, b) { return b.deuda.total - a.deuda.total; });
+      var problema = (v.clientes || []).filter(function (x) { return x.problema; }).sort(function (a, b) { return (b.inc60 + b.incAbiertas * 2) - (a.inc60 + a.incAbiertas * 2); });
       var suma = function (l) { return l.reduce(function (s, x) { return s + x.deuda.total; }, 0); };
       var conEq = morosos.filter(function (x) { return (x.equipos || []).length; });
       var sinEq = morosos.filter(function (x) { return !(x.equipos || []).length; });
       var tarjeta = function (x) {
-        return h('button', { class: 'prio-item', onclick: function () { c.abrir('sup_visita', { cliente: x.k, motivos: x.moroso ? ['Cobranza'].concat(x.problema ? ['Incidencias recurrentes'] : []) : ['Incidencias recurrentes'] }); } },
+        return h('button', { class: 'prio-item', onclick: function () { c.abrir('sup_visita', { cliente: x.k, motivos: (x.problema ? ['Incidencias recurrentes'] : []).concat(x.moroso ? ['Cobranza'] : []) }); } },
           h('b', { text: x.cliente }),
           h('small', { text: [x.direccion, String(x.distrito || '').split(',')[0]].filter(Boolean).join(' · ') || (x.razon || '') }),
           h('div', { class: 'prio-tags' }, etiquetas(x)));
@@ -86,11 +87,11 @@
       var vacio = function (t) { return h('div', { class: 'empty' }, h('div', { class: 'e-ico', text: '✅' }), t); };
       return [
         v.cobranzaError ? h('div', { class: 'banner warn' }, h('span', { class: 'bi', text: '⚠️' }), h('div', null, h('b', { text: 'No se pudo leer Cobranza' }), v.cobranzaError)) : null,
+        h('div', { class: 'group-title', text: 'Clientes con incidencias · ' + problema.length }),
+        h('div', { class: 'hint', style: { margin: '-4px 2px 10px' }, text: '3 o más incidencias en 60 días, o una incidencia abierta hace más de 7 días.' }),
+        h('div', { class: 'prio' }, problema.length ? problema.map(tarjeta) : vacio('Ningún cliente con incidencias recurrentes')),
         h('div', { class: 'group-title', text: 'Morosos con equipo instalado · ' + conEq.length + ' · ' + soles(suma(conEq)) }),
         h('div', { class: 'prio' }, conEq.length ? conEq.map(tarjeta) : vacio('Sin deuda vencida')),
-        h('div', { class: 'group-title', text: 'Clientes problema · ' + problema.length }),
-        h('div', { class: 'hint', style: { margin: '-4px 2px 10px' }, text: '3 o más incidencias en 60 días, o una incidencia abierta hace más de 7 días.' }),
-        h('div', { class: 'prio' }, problema.length ? problema.map(tarjeta) : vacio('Ningún cliente problema')),
         sinEq.length ? h('div', { class: 'group-title', text: 'Deuda de clientes sin equipo (bajas) · ' + sinEq.length + ' · ' + soles(suma(sinEq)) }) : null,
         sinEq.length ? h('div', { class: 'prio' }, sinEq.map(tarjeta)) : null,
       ];
