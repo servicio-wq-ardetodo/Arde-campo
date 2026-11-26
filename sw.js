@@ -1,6 +1,6 @@
 // ARDE Campo · Service worker: la app abre y funciona sin señal.
 // Al publicar una versión nueva, cambia VERSION para que los celulares se actualicen.
-var VERSION = 'arde-campo-1.5.1';
+var VERSION = 'arde-campo-1.5.2';
 var ARCHIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/config.js', 'js/core.js', 'js/ui.js', 'js/mod-tecnico.js', 'js/mod-comercial.js', 'js/mod-supervisor.js', 'js/manuales.js', 'js/app.js',

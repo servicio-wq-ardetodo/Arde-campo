@@ -129,6 +129,25 @@
           '<p><b>Cuándo:</b> mudas un equipo a otra dirección del mismo cliente. Solo aparecen los traslados <b>programados</b>.</p>' +
           pasos(['Elige el <b>traslado programado</b>: verás la dirección actual y la nueva.', 'Observaciones.', 'Cargo de conformidad (firma en la dirección nueva).']) +
           '<p>Al enviar, la dirección nueva queda en la cartera.</p>' },
+        { id: 'consecuencias', t: '🚨 Qué pasa si no registras', html:
+          '<p>Todo lo que ARDE sabe de un servicio sale de la app. <b>Un servicio que no se registra, para el sistema no existe</b>, aunque se haya hecho. Estas son las consecuencias en la operación:</p>' +
+          tabla([['Si no registras…', 'Qué pasa en la operación', 'Cómo lo detecta ARDE'],
+            ['<b>Mantenimiento</b>', 'El equipo queda como <b>vencido</b> aunque lo hayas visitado. No se descuenta la fragancia usada, se desordenan las compras y puede faltar fragancia para todos. El cliente no recibe su cargo y, si reclama, no hay cómo demostrar la visita.', 'Resumen diario: mantenimientos vencidos y registros por técnico'],
+            ['<b>Instalación</b>', 'El equipo <b>no entra a la cartera</b>: no se factura, no se le programan mantenimientos y nadie lo vuelve a visitar. La solicitud sigue apareciendo como pendiente.', 'Resumen diario: trabajos programados pendientes'],
+            ['<b>Incidencia</b>', 'Queda <b>abierta</b>. A los 7 días el cliente pasa a "cliente problema" y se programa una visita de supervisión. Cuenta como atención fuera de plazo.', 'Prioridades del supervisor y resumen diario'],
+            ['<b>Salida de almacén</b>', 'La fragancia o el equipo salen <b>sin respaldo</b>: el inventario no cuadra y la diferencia no se puede justificar.', 'Cruce de inventario con las salidas registradas'],
+            ['<b>Retiro</b>', 'El equipo sigue como <b>activo</b>: se le siguen programando mantenimientos y se le puede seguir cobrando a un cliente que ya se fue. El equipo no figura de vuelta en almacén.', 'Retiros programados pendientes'],
+            ['<b>Cambio de equipo</b>', 'La cartera mantiene el <b>modelo anterior</b>: las recargas y la capacidad del tanque se calculan mal en las siguientes visitas.', 'Cambios programados pendientes'],
+            ['<b>Traslado</b>', 'La cartera mantiene la <b>dirección anterior</b>: el próximo técnico va al lugar equivocado.', 'Traslados programados pendientes']]) +
+          '<h4>Registros incompletos o fuera de lugar</h4>' +
+          tabla([['Falta', 'Consecuencia operativa'],
+            ['Sin foto, o foto de otro día', 'No hay evidencia del nivel del frasco ni del estado del equipo; el servicio queda observado.'],
+            ['Cargo sin firma del cliente sin motivo real', 'El servicio queda sin conformidad: ante un reclamo, ARDE no tiene respaldo.'],
+            ['Registrado lejos del local o mucho después', 'La ubicación GPS y la hora no coinciden con la visita; el registro queda observado.'],
+            ['Lecturas en ml inventadas o aproximadas', 'El consumo real del cliente sale mal y se compra fragancia de más o de menos.']]) +
+          '<h4>Seguimiento</h4>' +
+          lista(['Las faltas se cuentan <b>por técnico y por mes</b>, con la información que deja la app (LOG_APP, CONFORMIDADES y el resumen diario).', 'Las consecuencias contractuales y la escala por reincidencia son las que establece la <b>adenda del contrato</b>.']) +
+          ojo('Si por algún motivo no pudiste registrar en el momento (sin batería, app con problemas), avisa a Operaciones el mismo día y registra apenas puedas. La app guarda la hora real de cuando lo registras.') },
       ],
     },
 
