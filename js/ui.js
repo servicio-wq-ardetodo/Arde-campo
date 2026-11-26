@@ -300,9 +300,18 @@
     // Foto con compresión. Guarda {dataUrl, mime, nombre, kb} en estado[k]
     f.foto = function (k, etiqueta, o) {
       o = o || {};
-      var input = h('input', { type: 'file', accept: o.accept || 'image/*', 'aria-label': etiqueta });
-      if (o.camara) input.setAttribute('capture', 'environment');
+      var accept = o.accept || 'image/*';
+      var soloImagen = accept === 'image/*';
+      // Dos caminos: cámara (abre la cámara directo) y galería (elige una foto o archivo guardado)
+      var inputCam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', 'aria-label': (etiqueta || 'Foto') + ': tomar foto' });
+      var inputGal = h('input', { type: 'file', accept: accept, 'aria-label': (etiqueta || 'Foto') + ': elegir de la galería' });
+      var enCaja = o.camara ? inputCam : inputGal;    // tocar el recuadro hace lo de siempre
+      var fuera = o.camara ? inputGal : inputCam;
+      fuera.style.display = 'none';
       var caja = h('div', { class: 'photo' });
+      var botones = h('div', { class: 'photo-src' },
+        h('button', { type: 'button', class: 'photo-btn', onclick: function () { inputCam.click(); } }, '📷 Tomar foto'),
+        h('button', { type: 'button', class: 'photo-btn', onclick: function () { inputGal.click(); } }, soloImagen ? '🖼️ Elegir de galería' : '📎 Galería o archivo'));
       function pintar() {
         var v = estado[k];
         caja.className = 'photo' + (v ? ' set' : '');
@@ -312,9 +321,9 @@
         caja.appendChild(h('div', null,
           h('b', { text: v ? (o.listo || 'Foto lista') + ' ✓' : (o.titulo || 'Tomar foto') }),
           h('small', { text: v ? (v.nombre + ' · ' + v.kb + ' KB · tocar para cambiar') : (o.sub || '') })));
-        caja.appendChild(input);
+        caja.appendChild(enCaja);
       }
-      input.addEventListener('change', function () {
+      function leer(input, deGaleria) {
         var file = input.files && input.files[0];
         if (!file) return;
         caja.querySelector('b').textContent = 'Procesando...';
@@ -323,11 +332,18 @@
           if (!foto) { ui.toast('No se pudo leer la foto', 'err'); pintar(); return; }
           if (foto.kb > 9000) { ui.toast('El archivo es muy pesado (máx. 9 MB)', 'err'); pintar(); return; }
           estado[k] = foto; quitarError(k); pintar(); cambio();
+          // Foto vieja de la galería: avisar para que no se cuele una de otra visita
+          if (deGaleria && file.lastModified && Date.now() - file.lastModified > 86400000 && /^image\//.test(file.type)) {
+            var d = new Date(file.lastModified);
+            ui.toast('Ojo: esta foto es del ' + d.getDate() + '/' + (d.getMonth() + 1) + '. Verifica que sea de esta visita.', 'warn');
+          }
         });
-      });
+      }
+      inputCam.addEventListener('change', function () { leer(inputCam, false); });
+      inputGal.addEventListener('change', function () { leer(inputGal, true); });
       pintar();
       f.vigias.push(pintar);
-      return marco(k, etiqueta, o.req, caja, o.hint);
+      return marco(k, etiqueta, o.req, h('div', null, caja, botones, fuera), o.hint);
     };
 
     // Firma con el dedo. Guarda un PNG (dataURL) en estado[k]; '' si está en blanco.

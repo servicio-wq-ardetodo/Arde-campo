@@ -69,7 +69,8 @@
             ['"No encuentro al cliente / equipo"', 'Escribe parte del nombre o el código EQP. Si recién lo dieron de alta, toca ↻ arriba en Inicio (o <b>Cuenta → Actualizar datos</b>).'],
             ['"No me aparece el trabajo programado"', 'Operaciones aún no lo programó (o no está validado). Avisa a Operaciones; luego <b>Cuenta → Actualizar datos</b>.'],
             ['"Tu sesión venció"', 'Ingresa tu PIN de nuevo. Si dice que tu usuario está inactivo, habla con Operaciones.'],
-            ['"No toma la foto"', 'Da permiso de cámara a la app (Ajustes del celular → Apps → Chrome/Safari → Cámara).'],
+            ['"No toma la foto"', 'Da permiso de cámara a la app (Ajustes del celular → Apps → Chrome/Safari → Cámara). Mientras tanto, toma la foto con la cámara normal y súbela con <b>🖼️ Elegir de galería</b>.'],
+            ['"Me sale: Ojo, esta foto es del…"', 'Elegiste de la galería una foto de otro día. Revisa que sea la de esta visita; si no, cámbiala.'],
             ['"Se quedó en cola mucho rato"', 'Revisa que tengas datos o wifi. Abre la app: al abrirla reintenta el envío.'],
           ]) },
       ],
@@ -89,7 +90,7 @@
           pasos(['<b>Equipo visitado</b>: busca por cliente o código EQP. Verás modelo, fragancia, tipo de servicio y días desde la última visita.',
             '<b>Al llegar (ml)</b>: cuánto había en el frasco. <b>Recarga (ml)</b>: cuánto agregaste. La app calcula cómo queda al salir.',
             '<b>¿Se cambió la fragancia?</b> Si dices Sí, elige la nueva.',
-            '<b>Foto del frasco al terminar</b> (obligatoria, con la cámara).',
+            '<b>Foto del frasco al terminar</b> (obligatoria): <b>📷 Tomar foto</b> o <b>🖼️ Elegir de galería</b> si ya la tomaste con la cámara del celular.',
             'Observaciones (internas para Operaciones) y el cargo de conformidad.']) +
           tip('Si el equipo ya tiene una visita hoy o la recarga supera el tamaño del tanque, la app te avisa antes de enviar. Revisa los números.') },
         { id: 'instalacion', t: '📦 Instalación', html:

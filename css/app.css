@@ -355,6 +355,7 @@ select.ctl {
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.err { background: var(--err); }
 .toast.ok { background: var(--ok); }
+.toast.warn { background: var(--warn); }
 
 .loading { display: grid; place-items: center; min-height: 60vh; color: var(--muted); gap: 12px; }
 .spin { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--flame); animation: rot .8s linear infinite; }
@@ -463,3 +464,8 @@ select.ctl {
 .m-campos dt { font-weight: 700; margin-top: 8px; }
 .m-campos dd { margin: 2px 0 6px; color: var(--ink-2); }
 .m-body code { background: #F2F3F5; padding: 1px 5px; border-radius: 5px; font-size: 13px; }
+
+/* Foto: cámara o galería */
+.photo-src { display: flex; gap: 8px; margin-top: 8px; }
+.photo-btn { flex: 1; min-height: 40px; border: 1.5px solid var(--line); background: var(--card); border-radius: 10px; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.photo-btn:active { background: var(--line-2); }
