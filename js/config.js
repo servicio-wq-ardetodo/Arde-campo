@@ -5,7 +5,7 @@
 // ============================================================
 window.ARDE_CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbzDMmT2hvNu4ukUggQvzwnzp_yZeiDnXa8-TwLqfUy4ztBCWFDFDpPcMSQhRi7tSiG_hg/exec',
-  VERSION: '1.4.0',
+  VERSION: '1.5.0',
 
   DISTRITOS: [
     'Miraflores, Lima', 'Surco, Lima', 'San Isidro, Lima', 'La Victoria, Lima', 'Cercado de Lima, Lima',

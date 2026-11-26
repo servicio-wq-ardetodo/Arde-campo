@@ -122,7 +122,8 @@
   });
 
   window.addEventListener('popstate', function () {
-    if (pantalla === 'modulo' || pantalla === 'historial' || pantalla === 'cuenta') irInicio(true);
+    if (pantalla === 'manual') return irManuales(true);
+    if (pantalla === 'modulo' || pantalla === 'historial' || pantalla === 'cuenta' || pantalla === 'manuales') irInicio(true);
   });
 
   window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); instalarEvt = ev; A.emit('instalable'); if (pantalla === 'inicio') irInicio(true); });
@@ -233,6 +234,7 @@
     return h('nav', { class: 'tabbar' },
       b('inicio', 'home', 'Inicio', function () { irInicio(true); }),
       b('historial', 'clock', 'Historial', irHistorial),
+      b('manuales', 'book', 'Manuales', function () { irManuales(); }),
       b('cuenta', 'user', 'Cuenta', irCuenta));
   }
 
@@ -360,6 +362,7 @@
       h('div', { class: 'shell' },
         topbar(m.titulo, m.sub, function () { history.back(); }),
         h('main', { class: 'main' + (m.soloLectura ? '' : ' with-submit') },
+          A.ayudaDe(m.id) ? h('button', { class: 'm-ayuda', type: 'button', onclick: function () { var a = A.ayudaDe(m.id); abrirManual(a.manual, a.seccion); } }, '📘 ¿Cómo se llena? Ver manual') : null,
           guardado ? h('div', { class: 'banner info' }, h('span', { class: 'bi', text: '📝' }),
             h('div', { class: 'grow' }, h('b', { text: 'Recuperamos tu borrador' }), 'Guardado a las ' + A.hora(guardado) + '.',
               h('div', null, h('button', { class: 'link', text: 'Empezar de nuevo', onclick: function () {
@@ -522,6 +525,73 @@
   // ============================================================
   // CUENTA
   // ============================================================
+  // ============================================================
+  // MANUALES
+  // ============================================================
+  function irManuales(desdeAtras) {
+    if (!desdeAtras && pantalla !== 'manuales') history.pushState({ p: 'manuales' }, '');
+    pantalla = 'manuales';
+    var u = A.sesion.usuario() || {};
+    var lista = A.manualesPara(u.rol);
+    var buscar = h('input', { class: 'm-buscar', type: 'search', placeholder: 'Buscar en los manuales (ej. firma, foto, PIN)', 'aria-label': 'Buscar en los manuales' });
+    var resultados = h('div');
+    function pintar() {
+      var q = ui.normal(buscar.value).trim();
+      resultados.innerHTML = '';
+      if (!q) {
+        lista.forEach(function (m) {
+          resultados.appendChild(h('button', { class: 'm-item', onclick: function () { abrirManual(m.id); } },
+            h('span', { class: 'm-ico', text: m.ico }), h('span', { class: 'grow' }, h('b', { text: m.titulo }), h('small', { text: m.sub })),
+            h('span', { class: 'm-n', text: m.secciones.length + ' temas' })));
+        });
+        return;
+      }
+      var hits = [];
+      lista.forEach(function (m) { m.secciones.forEach(function (sec) {
+        var txt = ui.normal(sec.t + ' ' + sec.html.replace(/<[^>]+>/g, ' '));
+        if (q.split(/\s+/).every(function (w) { return txt.indexOf(w) !== -1; })) hits.push({ m: m, s: sec });
+      }); });
+      if (!hits.length) { resultados.appendChild(h('div', { class: 'empty' }, h('div', { class: 'e-ico', text: '🔎' }), 'No encontré "' + buscar.value + '".')); return; }
+      hits.forEach(function (x) {
+        resultados.appendChild(h('button', { class: 'm-item', onclick: function () { abrirManual(x.m.id, x.s.id); } },
+          h('span', { class: 'm-ico', text: x.m.ico }), h('span', { class: 'grow' }, h('b', { text: x.s.t }), h('small', { text: x.m.titulo }))));
+      });
+    }
+    buscar.addEventListener('input', pintar);
+    montar([
+      h('div', { class: 'shell' },
+        topbar('Manuales', 'Cómo usar ARDE Campo', function () { history.back(); }),
+        h('main', { class: 'main' }, buscar, resultados)),
+      tabbar('manuales'),
+    ]);
+    pintar();
+  }
+
+  function abrirManual(id, seccionId) {
+    var m = A.manuales.filter(function (x) { return x.id === id; })[0];
+    if (!m) return;
+    if (pantalla !== 'manual') history.pushState({ p: 'manual' }, '');
+    pantalla = 'manual';
+    var secciones = m.secciones.map(function (sec) {
+      var d = h('details', { class: 'm-sec', id: 'm-' + sec.id },
+        h('summary', null, h('span', { text: sec.t })),
+        h('div', { class: 'm-body', html: sec.html }));
+      if (sec.id === seccionId) d.open = true;
+      return d;
+    });
+    montar([
+      h('div', { class: 'shell' },
+        topbar(m.ico + ' ' + m.titulo, m.sub, function () { history.back(); }),
+        h('main', { class: 'main' },
+          h('div', { class: 'm-acciones' },
+            h('button', { class: 'link', text: 'Abrir todo', onclick: function () { secciones.forEach(function (d) { d.open = true; }); } }),
+            h('button', { class: 'link', text: 'Cerrar todo', onclick: function () { secciones.forEach(function (d) { d.open = false; }); } })),
+          secciones)),
+      tabbar('manuales'),
+    ]);
+    if (seccionId) setTimeout(function () { var el = document.getElementById('m-' + seccionId); if (el) el.scrollIntoView({ block: 'start' }); }, 60);
+  }
+
   function irCuenta() {
     if (pantalla !== 'cuenta') history.pushState({ p: 'cuenta' }, '');
     pantalla = 'cuenta';
