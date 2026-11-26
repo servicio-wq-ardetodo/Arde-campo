@@ -150,8 +150,9 @@ function siguienteCorrelativo_(prefijo) {
     var key = 'CORRELATIVO_' + prefijo;
     // Si este proyecto aún no tiene el contador (p. ej. la API recién creada),
     // se parte del ticket más alto que ya existe en la hoja, para no repetir números
-    if (props.getProperty(key) == null) props.setProperty(key, String(maxTicketEnHoja_(prefijo)));
-    var actual = parseInt(props.getProperty(key) || '0', 10);
+    // El número sale del MAYOR entre el contador y el ticket más alto que ya está en la hoja.
+    // Así, si otro formulario (u otra persona a mano) escribe en la misma hoja, nunca se repite un número.
+    var actual = Math.max(parseInt(props.getProperty(key) || '0', 10), maxTicketEnHoja_(prefijo));
     var siguiente = actual + 1;
     props.setProperty(key, String(siguiente));
     var numStr = String(siguiente);

@@ -544,6 +544,14 @@ function enviarResumenDiario() {
     if (sinGps) h.push('<p style="color:#B45309">⚠ ' + sinGps + ' registro(s) sin ubicación GPS.</p>');
   }
 
+  // Control: solicitudes que la app registró OK (últimos 7 días) pero ya no están en su hoja
+  var perdidas = solicitudesPerdidas_(7);
+  if (perdidas.length) {
+    h.push('<h3 style="color:#B91C1C">⚠ Solicitudes que ya no están en su hoja (' + perdidas.length + ')</h3>');
+    h.push('<p style="font-size:13px;color:#6B7280">La app las registró bien, pero alguien borró o limpió la fila. Recupéralas desde Archivo → Historial de versiones.</p>');
+    perdidas.forEach(function(x){ h.push('<p>' + x + '</p>'); });
+  }
+
   h.push('<h3>Instalaciones esperando tu validación (' + sinValidar.length + ')</h3>');
   if (!sinValidar.length) h.push('<p>Ninguna.</p>');
   sinValidar.forEach(function(s){
@@ -677,4 +685,56 @@ function configurarApp() {
 
   Logger.log((creada ? 'Hoja USUARIOS_APP creada con PIN al azar. ' : 'USUARIOS_APP ya existía. ')
     + 'LOG_APP lista. Resumen diario programado a las ' + APP.RESUMEN_HORA + ':00.');
+}
+
+// ── Control de solicitudes perdidas ─────────────────────────
+// Compara lo que la app registró OK en LOG_APP con lo que hoy existe en cada hoja.
+var HOJA_POR_PREFIJO_ = { SOP: 'INCIDENCIAS', INS: 'SOLICITUD_INSTALACION', RET: 'SOLICITUD_RETIRO', CAM: 'SOLICITUD_CAMBIO', TRA: 'Solicitud_Traslado' };
+
+function solicitudesPerdidas_(dias) {
+  var log = hojaLog_(), ss = getSpreadsheet(), out = [];
+  if (log.getLastRow() < 2) return out;
+  var limite = Date.now() - dias * 86400000;
+  var desde = Math.max(2, log.getLastRow() - 3000);
+  var buscados = {};
+  log.getRange(desde, 1, log.getLastRow() - desde + 1, 7).getValues().forEach(function(r){
+    if (r[6] !== 'OK' || String(r[4]).indexOf('c_') !== 0) return;
+    if (!esFecha_(r[0]) || r[0].getTime() < limite) return;
+    var t = String(r[5] || '').trim().toUpperCase(), m = t.match(/^(SOP|INS|RET|CAM|TRA)\d+$/);
+    if (m) buscados[t] = { prefijo: m[1], quien: r[2], cuando: Utilities.formatDate(r[0], 'America/Lima', 'dd/MM HH:mm'), modulo: r[4] };
+  });
+  var existentes = {};
+  Object.keys(HOJA_POR_PREFIJO_).forEach(function(p){
+    var sh = ss.getSheetByName(HOJA_POR_PREFIJO_[p]);
+    if (!sh || sh.getLastRow() < 2) return;
+    sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function(r){ existentes[String(r[0]).trim().toUpperCase()] = true; });
+  });
+  Object.keys(buscados).sort().forEach(function(t){
+    if (existentes[t]) return;
+    var b = buscados[t];
+    out.push('<b>' + t + '</b> · ' + nombreModulo_(b.modulo) + ' · ' + b.quien + ' · enviado el ' + b.cuando + ' · falta en ' + HOJA_POR_PREFIJO_[b.prefijo]);
+  });
+  return out;
+}
+
+// Para revisar a mano desde el editor (▶ revisarSolicitudesPerdidas)
+function revisarSolicitudesPerdidas() {
+  var l = solicitudesPerdidas_(30);
+  Logger.log(l.length ? l.join('\n').replace(/<\/?b>/g, '') : 'Todo en orden: no falta ninguna solicitud de los últimos 30 días.');
+}
+
+// Aviso al editar a mano las hojas de solicitudes (la app y los formularios siguen escribiendo normal)
+function protegerHojasSolicitudes() {
+  var ss = getSpreadsheet();
+  Object.keys(HOJA_POR_PREFIJO_).forEach(function(p){
+    var sh = ss.getSheetByName(HOJA_POR_PREFIJO_[p]);
+    if (!sh) return;
+    var desc = 'ARDE Campo: ticket, fecha y solicitante los escribe la app. No borres ni limpies estas filas.';
+    var ya = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).some(function(x){ return x.getDescription() === desc; });
+    if (ya) return;
+    // Solo columnas A:C (ticket, fecha, solicitante): asignar técnico, programar o cambiar estado NO muestra aviso.
+    // Borrar o limpiar una fila completa SÍ lo muestra.
+    sh.getRange('A2:C').protect().setDescription(desc).setWarningOnly(true);
+  });
+  Logger.log('Listo: las hojas de solicitudes muestran un aviso antes de editarlas a mano.');
 }
