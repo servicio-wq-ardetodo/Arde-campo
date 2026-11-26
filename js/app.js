@@ -18,7 +18,81 @@
   // ============================================================
   // ARRANQUE
   // ============================================================
+  // ============================================================
+  // SOLO COMO APP INSTALADA: en el navegador solo se ven las
+  // instrucciones de instalación (no se puede ingresar ni enviar).
+  // Excepción para pruebas desde la PC: abrir el link con ?web=1
+  // ============================================================
+  function esInstalada() {
+    return ['standalone', 'fullscreen', 'minimal-ui'].some(function (m) { return window.matchMedia('(display-mode: ' + m + ')').matches; })
+      || window.navigator.standalone === true;
+  }
+  function permitidoEnNavegador() {
+    try {
+      var q = new URLSearchParams(location.search).get('web');
+      if (q === '1') A.store.set('permitirNavegador', true);
+      if (q === '0') A.store.del('permitirNavegador');
+    } catch (e) {}
+    return !!A.store.get('permitirNavegador');
+  }
+
+  function pantallaInstalar() {
+    pantalla = 'instalar';
+    var ua = navigator.userAgent || '';
+    var ios = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    var android = /Android/i.test(ua);
+    var enOtraApp = /WhatsApp|FBAN|FBAV|Instagram|Line\/|; wv\)/i.test(ua) || (ios && /CriOS|FxiOS|EdgiOS|GSA\//i.test(ua));
+    var url = location.origin + location.pathname;
+    var paso = function (n, html) { return h('li', null, h('span', { class: 'inst-n', text: String(n) }), h('div', { html: html })); };
+    var copiar = h('button', { class: 'btn btn-ghost', type: 'button', text: '📋 Copiar link de la app', onclick: function () {
+      var ok = function () { ui.toast('Link copiado. Pégalo en ' + (ios ? 'Safari' : 'Chrome'), 'ok'); };
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, function () { prompt('Copia este link:', url); });
+      else prompt('Copia este link:', url);
+    } });
+    var pasos;
+    if (ios) {
+      pasos = h('ol', { class: 'inst-pasos' },
+        enOtraApp ? paso(1, 'Copia el link y ábrelo en <b>Safari</b> (no funciona desde WhatsApp ni Chrome).') : paso(1, 'Estás en Safari. ¡Bien!'),
+        paso(2, 'Toca el botón <b>Compartir</b> <span class="k">⬆︎</span> (abajo al centro).'),
+        paso(3, 'Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.'),
+        paso(4, 'Abre <b>ARDE Campo</b> desde el ícono de la llama e ingresa tu PIN.'));
+    } else if (android) {
+      pasos = h('ol', { class: 'inst-pasos' },
+        enOtraApp ? paso(1, 'Estás dentro de otra app (WhatsApp, etc.). Toca <span class="k">⋮</span> y elige <b>Abrir en Chrome</b>, o copia el link y pégalo en Chrome.') : null,
+        paso(enOtraApp ? 2 : 1, 'En Chrome toca el menú <span class="k">⋮</span> (arriba a la derecha).'),
+        paso(enOtraApp ? 3 : 2, 'Elige <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.'),
+        paso(enOtraApp ? 4 : 3, 'Abre <b>ARDE Campo</b> desde el ícono de la llama e ingresa tu PIN.'));
+    } else {
+      pasos = h('ol', { class: 'inst-pasos' },
+        paso(1, 'Abre este link en <b>Chrome</b> o <b>Edge</b>.'),
+        paso(2, 'Toca el ícono <b>Instalar</b> <span class="k">⊕</span> a la derecha de la barra de dirección (o menú <span class="k">⋮</span> → <b>Instalar ARDE Campo</b>).'),
+        paso(3, 'Abre <b>ARDE Campo</b> desde el acceso directo e ingresa tu PIN.'));
+    }
+    var botonInstalar = h('button', { class: 'btn btn-main inst-btn', type: 'button', hidden: !instalarEvt, onclick: function () {
+      if (!instalarEvt) return;
+      instalarEvt.prompt();
+      instalarEvt.userChoice.then(function (r) { if (r && r.outcome === 'accepted') listo(); }).catch(function () {});
+      instalarEvt = null;
+    } }, '⬇️  Instalar ARDE Campo');
+    var cajaListo = h('div', { class: 'inst-ok', hidden: true }, h('b', { text: '✅ ¡Instalada!' }),
+      h('div', { text: 'Ahora abre ARDE Campo desde el ícono de la llama en tu pantalla de inicio. Ya puedes cerrar esta página.' }));
+    function listo() { cajaListo.hidden = false; botonInstalar.hidden = true; }
+    window.addEventListener('appinstalled', listo);
+    A.on('instalable', function () { botonInstalar.hidden = !instalarEvt; });
+
+    document.body.style.background = '#15191E';
+    app.innerHTML = '';
+    app.appendChild(h('div', { class: 'login inst' },
+      h('div', { class: 'login-top' }, h('div', { html: ui.llama() }), h('div', { class: 'login-word', text: 'ARDE' }), h('div', { class: 'login-sub', text: 'CAMPO' })),
+      h('div', { class: 'inst-card' },
+        h('h1', { text: 'Instala la app para usarla' }),
+        h('p', { class: 'inst-sub', text: 'ARDE Campo funciona solo instalada en tu celular: así trabaja sin señal y no se pierde ningún registro.' }),
+        botonInstalar, cajaListo, pasos, copiar,
+        h('p', { class: 'inst-pie', html: '🔑 Tu <b>PIN</b> te lo da Operaciones.' }))));
+  }
+
   function iniciar() {
+    if (!esInstalada() && !permitidoEnNavegador()) return pantallaInstalar();
     if (!A.apiConfigurada()) return pantallaSinConfig();
     A.cola.todos().then(function (l) { cola = l; }).catch(function () {}).then(function () {
       if (!A.sesion.activa()) return pantallaLogin();
@@ -51,7 +125,7 @@
     if (pantalla === 'modulo' || pantalla === 'historial' || pantalla === 'cuenta') irInicio(true);
   });
 
-  window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); instalarEvt = ev; if (pantalla === 'inicio') irInicio(true); });
+  window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); instalarEvt = ev; A.emit('instalable'); if (pantalla === 'inicio') irInicio(true); });
 
   function cargarDatosYEntrar() {
     app.innerHTML = '';

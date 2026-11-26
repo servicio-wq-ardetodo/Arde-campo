@@ -414,3 +414,18 @@ select.ctl {
 .ptag.warn { background: var(--warn-soft); color: var(--warn); }
 .ptag.ok { background: var(--ok-soft); color: var(--ok); }
 .seg.multi button.on small { color: var(--flame-ink); opacity: .85; }
+
+/* ── Pantalla "instala la app" (abierta desde el navegador) ── */
+.login.inst { justify-content: flex-start; gap: 26px; }
+.inst-card { background: #fff; color: var(--ink); border-radius: 22px; padding: 22px 18px 18px; width: 100%; max-width: 440px; margin: 0 auto; box-shadow: 0 18px 40px rgba(0,0,0,.35); }
+.inst-card h1 { font-size: 21px; margin: 0 0 6px; }
+.inst-sub { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 0 0 16px; }
+.inst-btn { width: 100%; background: var(--flame); box-shadow: 0 8px 20px rgba(242,140,40,.35); margin-bottom: 14px; font-size: 17px; }
+.inst-pasos { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 12px; }
+.inst-pasos li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; line-height: 1.45; }
+.inst-n { flex: 0 0 28px; height: 28px; border-radius: 50%; background: var(--flame-soft); color: var(--flame-ink); font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.inst .k { display: inline-block; background: #F2F3F5; border-radius: 6px; padding: 0 6px; font-weight: 700; }
+.inst-card .btn-ghost { width: 100%; }
+.inst-ok { background: var(--ok-soft); color: var(--ok); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-size: 14px; line-height: 1.45; }
+.inst-ok b { display: block; font-size: 16px; margin-bottom: 2px; }
+.inst-pie { text-align: center; color: var(--muted); font-size: 13.5px; margin: 14px 0 0; }
